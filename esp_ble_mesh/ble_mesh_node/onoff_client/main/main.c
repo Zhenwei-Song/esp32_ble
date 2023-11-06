@@ -540,7 +540,7 @@ static void msg_send_task(void *arg)
                                                            &ctx, opcode,
                                                            sizeof(vnd_tid), (uint8_t *)&vnd_tid);
         if (err) {
-            ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_VND_MODEL_OP_STATUS);
+            ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_VND_MODEL_OP_SEND);
             printf("error: %d\n", err);
         }
 #endif
