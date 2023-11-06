@@ -1,10 +1,13 @@
-/* main.c - Application main entry point */
-
 /*
- * SPDX-FileCopyrightText: 2017 Intel Corporation
- * SPDX-FileContributor: 2018-2021 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
+ * @Author: Zhenwei-Song zhenwei.song@qq.com
+ * @Date: 2023-10-30 20:37:31
+ * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
+ * @LastEditTime: 2023-11-06 16:46:24
+ * @FilePath: \esp32\esp_ble_mesh\ble_mesh_vendor_model\vendor_server\main\main.c
+ * @Description: 仅供学习交流使用
+ * 添加了基于server的msg_sesnd task,2秒发送一次
+ * 可以和vendor_client以及server之间互相通信
+ * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
 
 #include <inttypes.h>
@@ -163,7 +166,7 @@ static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event
 {
     esp_err_t err = ESP_OK;
 #if 1
-        esp_ble_mesh_msg_ctx_t ctx = {0};
+    esp_ble_mesh_msg_ctx_t ctx = {0};
     ctx.net_idx = stored_net_idx;
     ctx.app_idx = stored_net_idx;
     ctx.addr = 0xc001;
@@ -181,13 +184,13 @@ static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event
                    (int)param->model_operation.msg);
 #if 1
             err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx, ESP_BLE_MESH_VND_MODEL_OP_STATUS,
-                                                               sizeof(tid), (uint8_t *)&tid);
+                                                     sizeof(tid), (uint8_t *)&tid);
             if (err) {
                 ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_VND_MODEL_OP_STATUS);
             }
 
             err = esp_ble_mesh_server_model_send_msg(&vnd_models[0], param->model_operation.ctx, ESP_BLE_MESH_VND_MODEL_OP_SEND,
-                                                               sizeof(tid), (uint8_t *)&tid);
+                                                     sizeof(tid), (uint8_t *)&tid);
             if (err) {
                 ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_VND_MODEL_OP_SEND);
             }
