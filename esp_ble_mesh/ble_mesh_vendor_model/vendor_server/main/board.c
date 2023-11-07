@@ -2,9 +2,10 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-10-30 20:37:31
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-06 16:41:44
+ * @LastEditTime: 2023-11-07 10:58:29
  * @FilePath: \esp32\esp_ble_mesh\ble_mesh_vendor_model\vendor_server\main\board.c
  * @Description: 仅供学习交流使用
+ * 添加了配网重置（按boot键）
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
 /* board.c - Board-specific hooks */
@@ -15,18 +16,26 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+#define BUTTON
 
-#include <stdio.h>
+#include "board.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "board.h"
+#include <stdio.h>
+
+#ifdef BUTTON
+#include "iot_button.h"
+
+#define BUTTON_IO_NUM 0
+#define BUTTON_ACTIVE_LEVEL 0
+#endif // BUTTON
 
 #define TAG "BOARD"
 
 struct _led_state led_state[3] = {
-    { LED_OFF, LED_OFF, LED_R, "red"   },
-    { LED_OFF, LED_OFF, LED_G, "green" },
-    { LED_OFF, LED_OFF, LED_B, "blue"  },
+    {LED_OFF, LED_OFF, LED_R, "red"},
+    {LED_OFF, LED_OFF, LED_G, "green"},
+    {LED_OFF, LED_OFF, LED_B, "blue"},
 };
 
 void board_led_operation(uint8_t pin, uint8_t onoff)
@@ -57,8 +66,27 @@ static void board_led_init(void)
         led_state[i].previous = LED_OFF;
     }
 }
+#ifdef BUTTON
+extern void ble_mesh_reset_provision();
+
+static void button_tap_cb(void *arg)
+{
+    ble_mesh_reset_provision();
+}
+
+static void board_button_init(void)
+{
+    button_handle_t btn_handle = iot_button_create(BUTTON_IO_NUM, BUTTON_ACTIVE_LEVEL);
+    if (btn_handle) {
+        iot_button_set_evt_cb(btn_handle, BUTTON_CB_RELEASE, button_tap_cb, "RELEASE");
+    }
+}
+#endif // BUTTON
 
 void board_init(void)
 {
     board_led_init();
+#ifdef BUTTON
+    board_button_init();
+#endif // BUTTON
 }
