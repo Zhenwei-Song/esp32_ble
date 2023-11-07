@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-10-30 20:37:31
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-06 18:57:47
+ * @LastEditTime: 2023-11-06 21:16:48
  * @FilePath: \esp32\esp_ble_mesh\ble_mesh_vendor_model\vendor_server\main\main.c
  * @Description: 仅供学习交流使用
  * 添加了基于server的msg_sesnd task,2秒发送一次
@@ -30,6 +30,9 @@
 #include "board.h"
 
 #define TAG "EXAMPLE"
+
+#define DEVICE_NAME "MESH_00"
+#define CTX_ADDR 0xc000 //task发送地址
 
 #define VENDOR_CLIENT
 #define CID_ESP 0x02E5
@@ -257,6 +260,17 @@ static void example_ble_mesh_custom_model_cb(esp_ble_mesh_model_cb_event_t event
         }
         ESP_LOGI(TAG, "Send 0x%06" PRIx32, param->model_send_comp.opcode);
         break;
+    case ESP_BLE_MESH_CLIENT_MODEL_RECV_PUBLISH_MSG_EVT: // 仅client会触发,当client订阅时触发
+        ESP_LOGI(TAG, "Receive publish message");
+        break;
+    case ESP_BLE_MESH_CLIENT_MODEL_SEND_TIMEOUT_EVT: // 仅client会触发（使用了time out发消息）
+        ESP_LOGW(TAG, "Client message send timeout");
+        break;
+    case ESP_BLE_MESH_MODEL_PUBLISH_COMP_EVT:
+        if (param->model_publish_comp.err_code) {
+            ESP_LOGE(TAG, "Failed to publish message ");
+            break;
+        }
     default:
         break;
     }
@@ -270,7 +284,7 @@ static void msg_send_task(void *arg)
     int vnd_tid = 0;
     ctx.net_idx = stored_net_idx;
     ctx.app_idx = stored_app_idx;
-    ctx.addr = 0xc000;
+    ctx.addr = CTX_ADDR;
     ctx.send_ttl = 3;
     ctx.send_rel = false;
     opcode = ESP_BLE_MESH_VND_MODEL_OP_SEND;
@@ -285,20 +299,7 @@ static void msg_send_task(void *arg)
             ESP_LOGE(TAG, "Failed to send vendor message");
             printf("error: %d\n", err);
         }
-        err = esp_ble_mesh_server_model_send_msg(&vnd_models_server[0], &ctx, ESP_BLE_MESH_VND_MODEL_OP_STATUS,
-                                                 sizeof(vnd_tid), (uint8_t *)&vnd_tid);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to send vendor message");
-            printf("error: %d\n", err);
-        }
-#else
-        err = esp_ble_mesh_client_model_send_msg(&vnd_models_client[0],
-                                                 &ctx, opcode,
-                                                 sizeof(vnd_tid), (uint8_t *)&vnd_tid,
-                                                 0, true, ROLE_NODE);
-        if (err) {
-            ESP_LOGE(TAG, "Failed to send message 0x%06x", ESP_BLE_MESH_VND_MODEL_OP_SEND);
-        }
+
         vTaskDelay(pdMS_TO_TICKS(2000));
         err = esp_ble_mesh_client_model_send_msg(&vnd_models_client[0],
                                                  &ctx, ESP_BLE_MESH_VND_MODEL_OP_STATUS,
@@ -326,8 +327,9 @@ static esp_err_t ble_mesh_init(void)
         ESP_LOGE(TAG, "Failed to initialize mesh stack");
         return err;
     }
+    esp_ble_mesh_set_unprovisioned_device_name(DEVICE_NAME);
 #ifdef VENDOR_CLIENT
-    err = esp_ble_mesh_client_model_init(&vnd_models_client[0]);
+        err = esp_ble_mesh_client_model_init(&vnd_models_client[0]);
     if (err) {
         ESP_LOGE(TAG, "Failed to initialize vendor client");
         return err;
