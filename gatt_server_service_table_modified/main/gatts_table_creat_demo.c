@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-01 16:49:40
+ * @LastEditTime: 2023-11-11 11:08:41
  * @FilePath: \esp32\gatt_server_service_table_modified\main\gatts_table_creat_demo.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -11,8 +11,15 @@
  * 实现了基于adtype中name的判断接收包的方法
  * 实现了字符串的拼接（帧头 + 实际内容）
  * 添加了吞吐量测试
+ * 添加了rssi
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
+
+// #define GPIO //GPIO相关
+// #define THROUGHPUT//吞吐量测试
+#define ROUTINGTABLE // 路由表（链表）
+#define QUEUE        // 发送、接收队列
+
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,7 +27,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef GPIO
 #include "driver/gpio.h"
+#endif // GPIO
+#ifdef QUEUE
+#include "ble_queue.h"
+#endif // QUEUE
+#ifdef ROUTINGTABLE
+#include "routing_table.h"
+#endif // ROUTINGTABLE
+#include "data.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_gap_ble_api.h"
@@ -32,19 +48,11 @@
 #include "freertos/task.h"
 #include "nvs_flash.h"
 
-// #define GPIO //GPIO相关
-// #define THROUGHPUT//吞吐量测试
-#define NEIGHBOURTABLE // 邻居表（链表）
-
 #define TAG "BLE_BROADCAST"
-#define NEIGHBOUR_TAG "NEIGHBOUR_TABLE"
 
-#define ADV_INTERVAL_MS 500 // 广播间隔时间，单位：毫秒
+#define ADV_INTERVAL_MS 2000 // 广播间隔时间，单位：毫秒
 #define SCAN_INTERVAL_MS 225
 #define DATA_INTERVAL_MS 600
-
-// #define MAX_DELAY_MS 1000
-// #define MIN_DELAY_MS 500
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -60,40 +68,19 @@ static uint64_t current_time = 0;
 static uint64_t cal_len = 0;
 #endif // THROUGHPUT
 
+#ifdef ROUTINGTABLE
+routing_table my_routing_table;
+#endif // ROUTINGTABLE
+#ifdef QUEUE
+static queue rec_queue;
+static queue send_queue;
+#endif // QUEUE
+
 uint32_t duration = 0;
 
 // static bool adv_data_changed = false;
 
 static const char remote_device_name[] = "OLTHR";
-
-static uint8_t data_1_size = 0;
-static uint8_t data_2_size = 0;
-
-static uint8_t adv_data_name[] = {
-    /* device name */
-    0x06, 0x09, 'O', 'L', 'T', 'H', 'R'};
-
-static uint8_t adv_data_ff1[] = {
-    /*自定义数据段1*/
-    0x08, 0xf1, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
-#if 1 // 31字节数据
-static uint8_t adv_data_31[] = {
-    /* device name */
-    0x06, 0x09, 'O', 'L', 'T', 'H', 'R',
-    /*自定义数据段2*/
-    0x17,
-    0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16};
-
-static uint8_t adv_data_62[] = {
-    /* device name */
-    0x06, 0x09, 'O', 'L', 'T', 'H', 'R',
-    /*自定义数据段2*/
-    0x36,
-    0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
-#endif
-static uint8_t adv_data_final[31] = {0};
 
 // 配置广播参数
 esp_ble_adv_params_t adv_params = {
@@ -151,87 +138,6 @@ static void data_match(uint8_t *data1, uint8_t *data2)
     }
 }
 
-#ifdef NEIGHBOURTABLE
-typedef struct neighbour_table {
-    void *mac;
-    // uint8_t mac[6];
-    struct neighbour_table *next;
-} neighbour, *p_neighbour;
-
-p_neighbour head = NULL;
-
-/**
- * @description: 插入邻居链表
- * @param {p_neighbour} new_neighbour
- * @return {*}
- */
-static int insert_neighbour(p_neighbour new_neighbour)
-{
-    p_neighbour prev = NULL;
-    int repeated = 0;
-
-    if (head == NULL) {
-        head = new_neighbour;
-        new_neighbour->next = NULL;
-    }
-    else {
-        prev = head;
-        while (prev != NULL) {
-            repeated = memcmp(prev->mac, new_neighbour->mac, 6);
-            if (repeated == 0) { // 检查重复
-                ESP_LOGI(NEIGHBOUR_TAG, "repeated mac address found");
-                goto exit;
-            }
-            if (prev->next == NULL)
-                break;
-            else
-                prev = prev->next;
-        }
-        prev->next = new_neighbour;
-        new_neighbour->next = NULL;
-    }
-exit:
-    return 0;
-}
-
-/**
- * @description: 从邻居链表移除邻居
- * @param {p_neighbour} old_neighbour
- * @return {*}
- */
-static void remove_neighbour(p_neighbour old_neighbour)
-{
-    p_neighbour prev = NULL;
-    if (head == old_neighbour) {
-        head = head->next;
-    }
-    else {
-        prev = head;
-        while (prev != NULL) {
-            if (prev->next == NULL)
-                break;
-            else
-                prev = prev->next;
-        }
-        prev->next = old_neighbour->next;
-    }
-}
-
-/**
- * @description: 打印邻居表
- * @return {*}
- */
-static void print_neighbour_table(void)
-{
-    p_neighbour temp = head;
-    while (temp != NULL) {
-        ESP_LOGI(NEIGHBOUR_TAG, "MAC address:");
-        esp_log_buffer_hex(NEIGHBOUR_TAG, temp->mac, 6);
-        temp = temp->next;
-    }
-}
-
-#endif // NEIGHBOURTABLE
 /**
  * @description: 广播数据切换任务，最后一个字节从0x01变换到0x0f,重复循环
  * @param {void} *pvParameters
@@ -256,6 +162,41 @@ static void switch_adv_data_task(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(DATA_INTERVAL_MS));
     }
 }
+
+#ifdef QUEUE
+static void ble_rec_data_task(void *pvParameters)
+{
+    uint8_t *user_data = NULL;
+    uint8_t *user_data2 = NULL;
+    uint8_t user_data_len = 0;
+    uint8_t user_data2_len = 0;
+    while (1) {
+        if (!queue_is_empty(&rec_queue)) {
+            user_data = esp_ble_resolve_adv_data(queue_pop(&rec_queue),
+                                                 ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
+            user_data2 = esp_ble_resolve_adv_data(queue_pop(&rec_queue),
+                                                  ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
+            ESP_LOGI(TAG, "ADV_DATA:");
+            esp_log_buffer_hex(TAG, queue_pop(&rec_queue), 31);
+            ESP_LOGI(TAG, "USER_DATA:");
+            esp_log_buffer_hex(TAG, user_data, user_data_len);
+            ESP_LOGI(TAG, "USER_DATA2:");
+            esp_log_buffer_hex("", user_data2, user_data2_len);
+        }
+    }
+}
+
+static void ble_send_data_task(void *pvParameters)
+{
+    while (1) {
+        if (!queue_is_empty(&send_queue)) {
+            esp_ble_gap_config_adv_data_raw(queue_pop(&send_queue), 31);
+            esp_ble_gap_start_advertising(&adv_params);
+        }
+    }
+}
+#endif // QUEUE
+
 #ifdef THROUGHPUT
 /**
  * @description: 计算2秒内吞吐量
@@ -279,19 +220,6 @@ static void throughput_task(void *param)
     }
 }
 #endif // THROUGHPUT
-
-#if 0  /*printf阻塞测试*/
-static void gpio_task(void *pvParameters)
-{
-    int cnt = 0;
-    while (1) {
-        gpio_set_level(GPIO_OUTPUT_IO_0, 1);
-        ESP_LOGI(TAG, "PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_PRINT_TEST_");
-        gpio_set_level(GPIO_OUTPUT_IO_0, 0);
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-    }
-}
-#endif /*printf阻塞测试*/
 
 #if 0
 static void ble_scan_task(void *pvParameters)
@@ -319,12 +247,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 #ifdef THROUGHPUT
     uint32_t bit_rate = 0;
 #endif // THROUGHPUT
-
 #ifdef GPIO
     static bool flag = false;
 #endif // GPIO
-    static uint8_t(*adv_data_old)[62] = {0};
-
     switch (event) {
     case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT: /*!< When raw advertising data set complete, the event comes */
         // ESP_LOGW(TAG, "ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT");
@@ -383,14 +308,6 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         case ESP_GAP_SEARCH_INQ_RES_EVT:            // 表示扫描到一个设备的广播数据
             adv_name = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
                                                 ESP_BLE_AD_TYPE_NAME_CMPL, &adv_name_len); // 解析广播设备名
-            user_data = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
-                                                 ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
-            user_data2 = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
-                                                  ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
-            //            ESP_LOGI(TAG, "searched Device Name Len %d", adv_name_len);
-            //            esp_log_buffer_char(TAG, adv_name, adv_name_len); // 打印设备名
-
-            //            ESP_LOGI(TAG, "\n");
             if (adv_name != NULL) {
                 if (strlen(remote_device_name) == adv_name_len && strncmp((char *)adv_name, remote_device_name, adv_name_len) == 0) { // 检查扫描到的设备名称是否与指定的 remote_device_name 匹配
 #ifdef THROUGHPUT
@@ -409,43 +326,47 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                     }
 #endif
 #endif // THROUGHPUT
-/*对接收到的广播包检查重复性*/
-#if 0
-                    if (adv_data_old == &scan_result->scan_rst.ble_adv) {
-                        ESP_LOGW(TAG, "repeated message");
-                        break;
-                    }
-                    ESP_LOGW(TAG, "new message");
-                    adv_data_old = &scan_result->scan_rst.ble_adv;
-#endif /*对接收到的广播包检查重复性*/
+
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
+#ifdef QUEUE
+                    queue_push(&rec_queue, scan_result->scan_rst.ble_adv);
+                    queue_print(&rec_queue);
+#else
+                    user_data = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
+                                                         ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
+                    user_data2 = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
+                                                          ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
+
+                    ESP_LOGI(TAG, "MAC:");
+                    esp_log_buffer_hex(TAG, scan_result->scan_rst.bda, 6); // 打印扫描到设备的MAC地址
+                                                                           // 打印广播数据
+                    ESP_LOGI(TAG, "ADV_DATA:");
+                    esp_log_buffer_hex(TAG, param->scan_rst.ble_adv, param->scan_rst.adv_data_len);
+                    ESP_LOGI(TAG, "USER_DATA:");
+                    esp_log_buffer_hex(TAG, user_data, user_data_len);
+                    // ESP_LOGW(TAG, "RSSI is %d", param->scan_rst.rssi);
+                    ESP_LOGI(TAG, "USER_DATA2:");
+                    esp_log_buffer_hex("", user_data2, user_data2_len);
+#endif // QUEUE
+
+#endif // ndef THROUGHPUT
+#ifdef ROUTINGTABLE
+#if 0
+                    routing_note *new_routing_table_node = (routing_note *)malloc(sizeof(routing_note));
+                    memcpy(new_routing_table_node->mac, scan_result->scan_rst.bda, 6);
+                    insert_routing_node(&my_routing_table, new_routing_table_node);
+                    // print_routing_table(&my_routing_table);
+#else
+                    insert_routing_node(&my_routing_table, scan_result->scan_rst.bda);
+#endif
+#endif // ROUTINGTABLE
+
 #ifdef GPIO
                     gpio_set_level(GPIO_OUTPUT_IO_1, flag);
                     flag = !flag;
                     printf("flag is %d\n", flag);
 #endif // GPIO
-                    ESP_LOGI(TAG, "MAC:");
-                    esp_log_buffer_hex(TAG, scan_result->scan_rst.bda, 6); // 打印扫描到设备的MAC地址
-                    // 打印广播数据
-                    ESP_LOGI(TAG, "ADV_DATA:");
-                    esp_log_buffer_hex("", param->scan_rst.ble_adv, param->scan_rst.adv_data_len);
-                    ESP_LOGI(TAG, "USER_DATA:");
-                    esp_log_buffer_hex("", user_data, user_data_len);
-#if 0
-                    ESP_LOGI(TAG, "USER_DATA2:");
-                    esp_log_buffer_hex("", user_data2, user_data2_len);
-#endif
-#endif // ndef THROUGHPUT
-#ifdef NEIGHBOURTABLE
-                    uint8_t mac_addr[6] = {0};
-                    memcpy(mac_addr, scan_result->scan_rst.bda, 6);
-                    ESP_LOGI(TAG, "mac_addr:");
-                    esp_log_buffer_hex(TAG, mac_addr, 6);
-                    neighbour new_neighbour = {{mac_addr}, NULL};
-                    insert_neighbour(&new_neighbour);
-                    print_neighbour_table();
-#endif // NEIGHBOURTABLE
                 }
             }
             break;
@@ -458,6 +379,14 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         break;
     }
 }
+
+#ifdef QUEUE
+static void all_queue_init()
+{
+    queue_init(&rec_queue);
+    queue_init(&send_queue);
+}
+#endif // QUEUE
 #ifdef GPIO
 static void esp_gpio_init(void)
 {
@@ -477,7 +406,6 @@ static void esp_gpio_init(void)
     gpio_config(&io_conf);
 }
 #endif // GPIO
-
 void app_main(void)
 {
     esp_err_t ret;
@@ -533,15 +461,25 @@ void app_main(void)
     }
 #ifdef GPIO
     esp_gpio_init();
-#endif
-    // 初始广播数据
-    //    data_match(adv_data_name, adv_data_ff1);
-    esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
+#endif // GPIO
+#ifdef ROUTINGTABLE
+    init_routing_table(&my_routing_table);
+#endif // ROUTINGTABLE
+#ifdef QUEUE
+    all_queue_init();
+#endif // QUEUE
+       //  初始广播数据
+       //     data_match(adv_data_name, adv_data_ff1);
+    // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
     esp_ble_gap_set_scan_params(&ble_scan_params);
     esp_ble_gap_start_scanning(duration);
-    esp_ble_gap_start_advertising(&adv_params);
-    // xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
-    //  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
+    // esp_ble_gap_start_advertising(&adv_params);
+// xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
+//  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
+#ifdef QUEUE
+    xTaskCreate(ble_send_data_task, "ble_send_data_task", 512, NULL, 5, NULL);
+    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 1024, NULL, 5, NULL);
+#endif // QUEUE
 #ifdef THROUGHPUT
     xTaskCreate(throughput_task, "throughput_task", 4096, NULL, 5, NULL);
 #endif // THROUGHPUT
