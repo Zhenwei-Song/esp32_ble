@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-10-30 20:37:31
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-07 11:19:49
+ * @LastEditTime: 2023-11-07 18:53:26
  * @FilePath: \esp32\esp_ble_mesh\ble_mesh_vendor_model\vendor_server\main\main.c
  * @Description: 仅供学习交流使用
  * 添加了基于server的msg_sesnd task,2秒发送一次
@@ -33,8 +33,8 @@
 
 // #define TAG "EXAMPLE"
 
-#define DEVICE_NAME "MESH_01"
-#define CTX_ADDR 0xc001 // task发送地址
+#define DEVICE_NAME "BLE_MESH_00"
+#define CTX_ADDR 0xc000 // task发送地址
 
 #define TAG DEVICE_NAME
 
@@ -85,7 +85,7 @@ static esp_ble_mesh_client_t vendor_client = {
 };
 
 /**
- * @description: 添加对什么op进行相应，只有这里添加了，ESP_BLE_MESH_MODEL_OPERATION_EVT中才会响应
+ * @description: 添加对什么op进行相应，只有这里添加了，ESP_BLE_MESH_CLIENT_MODEL_RECV_PUBLISH_MSG_EVT中才会响应（不能为空）
  * @return {*}
  */
 static esp_ble_mesh_model_op_t vnd_op_client[] = {
@@ -99,6 +99,10 @@ static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_CFG_CLI(&config_client),
 };
 
+/**
+ * @description: 添加对什么op进行相应，只有这里添加了，ESP_BLE_MESH_MODEL_OPERATION_EVT中才会响应
+ * @return {*}
+ */
 static esp_ble_mesh_model_op_t vnd_op_server[] = {
     ESP_BLE_MESH_MODEL_OP(ESP_BLE_MESH_VND_MODEL_OP_SEND, 2),
     ESP_BLE_MESH_MODEL_OP(ESP_BLE_MESH_VND_MODEL_OP_STATUS, 2),
