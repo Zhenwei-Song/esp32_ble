@@ -7,7 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-uint8_t data_1_size = 0;
+#include "esp_log.h"
+
+#define DATA_TAG "DATA"
+
+    uint8_t data_1_size = 0;
 uint8_t data_2_size = 0;
 
 uint8_t adv_data_name[] = {
@@ -35,5 +39,7 @@ uint8_t adv_data_62[] = {
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09};
 #endif
 uint8_t adv_data_final[31] = {0};
+
+void data_match(uint8_t *data1, uint8_t *data2);
 
 #endif // _DATA_H_

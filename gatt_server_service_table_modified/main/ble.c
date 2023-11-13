@@ -2,8 +2,8 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-13 09:50:18
- * @FilePath: \esp32\gatt_server_service_table_modified\main\gatts_table_creat_demo.c
+ * @LastEditTime: 2023-11-13 16:46:06
+ * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
  * 实现了广播与扫描同时进行（基于gap层）
@@ -15,18 +15,7 @@
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
 
-// #define GPIO //GPIO相关
-// #define THROUGHPUT//吞吐量测试
-#define ROUTINGTABLE // 路由表（链表）
-// #define QUEUE        // 发送、接收队列
-#define BUTTON // 按键
-
-#include <inttypes.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "ble.h"
 
 #ifdef GPIO
 #include "driver/gpio.h"
@@ -40,23 +29,8 @@
 #ifdef BUTTON
 #include "board.h"
 #endif
-#include "data.h"
-#include "esp_bt.h"
-#include "esp_bt_main.h"
-#include "esp_gap_ble_api.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
-#include "freertos/semphr.h"
-#include "freertos/task.h"
-#include "nvs_flash.h"
 
-#define TAG "BLE_BROADCAST"
-
-#define ADV_INTERVAL_MS 2000 // 广播间隔时间，单位：毫秒
-#define SCAN_INTERVAL_MS 225
-#define DATA_INTERVAL_MS 600
+#include "data_manage.h"
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -76,71 +50,9 @@ static uint64_t cal_len = 0;
 routing_table my_routing_table;
 #endif // ROUTINGTABLE
 #ifdef QUEUE
-static queue rec_queue;
-static queue send_queue;
+queue rec_queue;
+queue send_queue;
 #endif // QUEUE
-
-uint32_t duration = 0;
-
-// static bool adv_data_changed = false;
-
-static const char remote_device_name[] = "OLTHR";
-
-// 配置广播参数
-esp_ble_adv_params_t adv_params = {
-#if 1
-    .adv_int_min = ADV_INTERVAL_MS / 0.625,        // 广播间隔时间，单位：0.625毫秒
-    .adv_int_max = (ADV_INTERVAL_MS + 10) / 0.625, // 广播间隔时间，单位：0.625毫秒
-#else
-    .adv_int_min = 0x20,
-    .adv_int_max = 0x30,
-#endif
-    .adv_type = ADV_TYPE_NONCONN_IND, // 不可连接
-    .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
-    .channel_map = ADV_CHNL_ALL, // 在所有三个信道上广播
-    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_WLST_CON_WLST,
-};
-
-// 配置扫描参数
-static esp_ble_scan_params_t ble_scan_params = {
-    .scan_type = BLE_SCAN_TYPE_PASSIVE,
-    .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
-    .scan_filter_policy = BLE_SCAN_FILTER_ALLOW_ALL,
-#if 1
-    .scan_interval = 0xff, // 50 * 0.625ms = 31.25ms
-    .scan_window = 0xff,
-#else
-    .scan_interval = SCAN_INTERVAL_MS / 0.625,
-    .scan_window = SCAN_INTERVAL_MS / 0.625,
-#endif
-    .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE};
-
-SemaphoreHandle_t xMutex1;
-// SemaphoreHandle_t xMutex2;
-
-/**
- * @description:广播数据段拼接
- * @param {uint8_t} *data1  前段数据段
- * @param {uint8_t} *data2  后段数据段
- * @return {*}  无返回值
- */
-static void data_match(uint8_t *data1, uint8_t *data2)
-{
-    data_1_size = strlen((char *)data1);
-    data_2_size = strlen((char *)data2);
-    uint8_t data_final_size = sizeof(adv_data_final);
-    if (data_1_size + data_2_size <= data_final_size) {
-        for (int i = 0; i < data_1_size; i++) {
-            adv_data_final[i] = data1[i];
-        }
-        for (int i = 0; i < data_2_size; i++) {
-            adv_data_final[i + data_1_size] = data2[i];
-        }
-    }
-    else {
-        ESP_LOGE(TAG, "the length of data error");
-    }
-}
 
 /**
  * @description: 广播数据切换任务，最后一个字节从0x01变换到0x0f,重复循环
@@ -168,7 +80,7 @@ static void switch_adv_data_task(void *pvParameters)
 }
 
 #ifdef QUEUE
-static void ble_rec_data_task(void *pvParameters)
+void ble_rec_data_task(void *pvParameters)
 {
     uint8_t *user_data = NULL;
     uint8_t *user_data2 = NULL;
@@ -177,36 +89,46 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t user_data2_len = 0;
     while (1) {
         if (!queue_is_empty(&rec_queue)) {
-            ESP_LOGI(TAG, "queue is not empty");
-
-#if 1
+#if 0
             rec_data = queue_pop(&rec_queue);
-            esp_log_buffer_hex(ROUTING_TAG, rec_data, 31);
+            if (rec_data != NULL) {
+                esp_log_buffer_hex(QUEUE_TAG, rec_data, 31);
+                free(rec_data);
+            }
 #else
-            user_data = esp_ble_resolve_adv_data(queue_pop(&rec_queue),
-                                                 ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
-            user_data2 = esp_ble_resolve_adv_data(queue_pop(&rec_queue),
-                                                  ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
-            ESP_LOGI(TAG, "ADV_DATA:");
-            esp_log_buffer_hex(TAG, queue_pop(&rec_queue), 31);
-            ESP_LOGI(TAG, "USER_DATA:");
-            esp_log_buffer_hex(TAG, user_data, user_data_len);
-            ESP_LOGI(TAG, "USER_DATA2:");
-            esp_log_buffer_hex("", user_data2, user_data2_len);
-            vTaskDelay(pdMS_TO_TICKS(10));
+            rec_data = queue_pop(&rec_queue);
+            if (rec_data != NULL) {
+                user_data = esp_ble_resolve_adv_data(rec_data,
+                                                     ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
+                user_data2 = esp_ble_resolve_adv_data(rec_data,
+                                                      ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
+                ESP_LOGI(TAG, "ADV_DATA:");
+                esp_log_buffer_hex(TAG, rec_data, 31);
+                ESP_LOGI(TAG, "USER_DATA:");
+                esp_log_buffer_hex(TAG, user_data, user_data_len);
+                ESP_LOGI(TAG, "USER_DATA2:");
+                esp_log_buffer_hex("", user_data2, user_data2_len);
+                free(rec_data);
+            }
+            vTaskDelay(pdMS_TO_TICKS(5000));
 #endif
         }
     }
 }
 
-static void ble_send_data_task(void *pvParameters)
+void ble_send_data_task(void *pvParameters)
 {
+    uint8_t *send_data = NULL;
     while (1) {
         if (!queue_is_empty(&send_queue)) {
-            esp_ble_gap_config_adv_data_raw(queue_pop(&send_queue), 31);
-            esp_ble_gap_start_advertising(&adv_params);
-            vTaskDelay(pdMS_TO_TICKS(10));
+            send_data = queue_pop(&send_queue);
+            if (send_data != NULL) {
+                esp_ble_gap_config_adv_data_raw(send_data, 31);
+                esp_ble_gap_start_advertising(&adv_params);
+                free(send_data);
+            }
         }
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 #endif // QUEUE
@@ -250,7 +172,7 @@ static void ble_scan_task(void *pvParameters)
 }
 #endif
 
-static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     uint8_t *adv_name = NULL;
     uint8_t adv_name_len = 0;
@@ -345,7 +267,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
 #ifdef QUEUE
                     queue_push(&rec_queue, scan_result->scan_rst.ble_adv);
-                    queue_print(&rec_queue);
+                    // queue_print(&rec_queue);
 #else
                     user_data = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
                                                          ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
@@ -373,7 +295,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                     // print_routing_table(&my_routing_table);
 #else
                     insert_routing_node(&my_routing_table, scan_result->scan_rst.bda);
-                    print_routing_table(&my_routing_table);
+                    // print_routing_table(&my_routing_table);
 #endif
 #endif // ROUTINGTABLE
 
@@ -396,7 +318,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 }
 
 #ifdef QUEUE
-static void all_queue_init()
+void all_queue_init(void)
 {
     queue_init(&rec_queue);
     queue_init(&send_queue);
@@ -404,6 +326,7 @@ static void all_queue_init()
 #endif // QUEUE
 
 #ifdef BUTTON
+#if 1
 void button_ops()
 {
     uint8_t mac_test[] = {
@@ -411,6 +334,20 @@ void button_ops()
     remove_routing_node(&my_routing_table, mac_test);
     print_routing_table(&my_routing_table);
 }
+#else
+void button_ops()
+{
+    static char i;
+    adv_data_31[30] = i;
+    i++;
+    if (i == 16) {
+        i = 1;
+    }
+    esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
+    esp_ble_gap_start_advertising(&adv_params);
+    // esp_ble_gap_stop_advertising();
+}
+#endif
 #endif // BUTTON
 #ifdef GPIO
 static void esp_gpio_init(void)
@@ -431,6 +368,7 @@ static void esp_gpio_init(void)
     gpio_config(&io_conf);
 }
 #endif // GPIO
+
 void app_main(void)
 {
     esp_err_t ret;
@@ -495,15 +433,15 @@ void app_main(void)
 #endif // QUEUE
        //  初始广播数据
        //     data_match(adv_data_name, adv_data_ff1);
-    // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
+       // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
     esp_ble_gap_set_scan_params(&ble_scan_params);
     esp_ble_gap_start_scanning(duration);
     // esp_ble_gap_start_advertising(&adv_params);
 // xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
 //  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
 #ifdef QUEUE
-    // xTaskCreate(ble_send_data_task, "ble_send_data_task", 512, NULL, 0, NULL);
-    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 2048, NULL, 0, NULL);
+    xTaskCreate(ble_send_data_task, "ble_send_data_task", 4096, NULL, 0, NULL);
+    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 0, NULL);
 #endif // QUEUE
 #ifdef BUTTON
     board_init();
