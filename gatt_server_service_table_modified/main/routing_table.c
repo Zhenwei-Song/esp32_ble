@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-11 09:45:31
+ * @LastEditTime: 2023-11-13 10:02:24
  * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -105,30 +105,58 @@ exit:
     return 0;
 }
 #endif
+
 /**
  * @description:从路由链表移除项
  * @param {p_routing_table} table
  * @param {p_routing_note} old_routing
  * @return {*}
  */
-void remove_routing_node(p_routing_table table, p_routing_note old_routing)
+void remove_routing_node_from_node(p_routing_table table, p_routing_note old_routing)
 {
-    p_routing_note prev = NULL;
-    if (table->head == old_routing) { // 移除头部
-        table->head = table->head->next;
-        free(old_routing);
-    }
-    else { // 找出old_routing的上一项
-        prev = table->head;
-        while (prev != NULL) {
-            if (prev->next == old_routing) // 找到要删除的项
-                break;
-            else
-                prev = prev->next;
+    if (table->head != NULL) {
+        p_routing_note prev = NULL;
+        if (table->head == old_routing) { // 移除头部
+            table->head = table->head->next;
+            free(old_routing);
         }
-        if (prev != NULL)
-            free(prev->next);
-        prev->next = old_routing->next;
+        else { // 找出old_routing的上一项
+            prev = table->head;
+            while (prev != NULL) {
+                if (prev->next == old_routing) // 找到要删除的项
+                    break;
+                else
+                    prev = prev->next;
+            }
+            if (prev != NULL)
+                free(prev->next);
+            prev->next = old_routing->next;
+        }
+    }
+}
+
+void remove_routing_node(p_routing_table table, uint8_t *old_mac)
+{
+    if (table->head != NULL) {
+        p_routing_note prev = NULL;
+        if (memcmp(table->head->mac, old_mac, 6) == 0) { // 移除头部
+            prev = table->head;
+            table->head = table->head->next;
+            free(prev);
+        }
+        else { // 找出old_routing的上一项
+            prev = table->head;
+            while (prev != NULL) {
+                if (prev->next->mac == old_mac) // 找到要删除的项
+                    break;
+                else
+                    prev = prev->next;
+            }
+            if (prev != NULL) {
+                prev->next = prev->next->next;
+                free(prev->next);
+            }
+        }
     }
 }
 
@@ -171,18 +199,18 @@ bool check_routing_table(p_routing_table table, p_routing_note routing_note)
 void print_routing_table(p_routing_table table)
 {
     p_routing_note temp = table->head;
-    ESP_LOGW(ROUTING_TAG, "********************************Start printing MAC address:******************************************************");
+    ESP_LOGI(ROUTING_TAG, "********************************Start printing MAC address:******************************************************");
     while (temp != NULL) {
         esp_log_buffer_hex(ROUTING_TAG, temp->mac, 6);
         temp = temp->next;
     }
-    ESP_LOGW(ROUTING_TAG, "********************************Printing MAC address  is finished ***********************************************");
+    ESP_LOGI(ROUTING_TAG, "********************************Printing MAC address  is finished ***********************************************");
 }
 
 void destroy_routing_table(p_routing_table table)
 {
     ESP_LOGW(ROUTING_TAG, "Destroying routing_table!");
     while (table->head != NULL)
-        remove_routing_node(table, table->head);
+        remove_routing_node_from_node(table, table->head);
     ESP_LOGW(ROUTING_TAG, "Destroying routing_table finished!");
 }
