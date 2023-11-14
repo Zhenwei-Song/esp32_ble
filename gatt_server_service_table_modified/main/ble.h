@@ -87,7 +87,7 @@ static esp_ble_scan_params_t ble_scan_params = {
 #endif
     .scan_duplicate = BLE_SCAN_DUPLICATE_DISABLE};
 
-void all_queue_init(void);
-void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
-void ble_rec_data_task(void *pvParameters);
-void ble_send_data_task(void *pvParameters);
+static void all_queue_init(void);
+static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
+static void ble_rec_data_task(void *pvParameters);
+static void ble_send_data_task(void *pvParameters);

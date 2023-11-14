@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-08 16:36:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-13 16:14:13
+ * @LastEditTime: 2023-11-14 14:32:25
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble_queue.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -36,41 +36,55 @@ void queue_push(p_queue q, uint8_t *data)
         memcpy(new_node->data, data, queue_data_length);
         if (q->head == NULL) { // 队列为空
             q->head = q->tail = new_node;
-            new_node->next = NULL;
+            // new_node->next = NULL;
             q->tail->next = NULL;
         }
         else {
             q->tail->next = new_node;
             q->tail = new_node;
-            new_node->next = NULL;
+            // new_node->next = NULL;
             q->tail->next = NULL;
         }
     }
 }
 
+/**
+ * @description:
+ * @param {p_queue} q
+ * @param {uint8_t} *data
+ * @return {*}
+ */
 void queue_push_with_check(p_queue q, uint8_t *data)
 {
-    if (memcmp(q->tail->data, data, queue_data_length) != 0) { // 检查是否与队列中最后一个数据相同
-
-        p_qnode new_node = (p_qnode)malloc(sizeof(qnode));
-        if (new_node == NULL) {
-            ESP_LOGE(QUEUE_TAG, "malloc failed");
-        }
-        else {
-            memcpy(new_node->data, data, queue_data_length);
-            if (q->head == NULL) { // 队列为空
-                q->head = q->tail = new_node;
-                q->tail->next = NULL;
-            }
-            else {
-                q->tail->next = new_node;
-                q->tail = new_node;
-                q->tail->next = NULL;
-            }
-        }
+    int repeated = -1;
+    if (q->tail == NULL) { // 队列为空
+        p_qnode new_node_head = (p_qnode)malloc(sizeof(qnode));
+        memcpy(new_node_head->data, data, queue_data_length);
+        q->head = q->tail = new_node_head;
+        new_node_head->next = NULL;
+        q->tail->next = NULL;
+        //ESP_LOGW(QUEUE_TAG, "message add to head");
     }
     else {
-        ESP_LOGW(QUEUE_TAG, "message is repeated");
+        repeated = memcmp(data, q->tail->data, queue_data_length);
+        if (repeated != 0) { // 检查是否与队列中最后一个数据相同
+
+            p_qnode new_node = (p_qnode)malloc(sizeof(qnode));
+            if (new_node == NULL) {
+                ESP_LOGE(QUEUE_TAG, "malloc failed");
+            }
+            else {
+                memcpy(new_node->data, data, queue_data_length);
+                q->tail->next = new_node;
+                q->tail = new_node;
+                new_node->next = NULL;
+                q->tail->next = NULL;
+            }
+            //ESP_LOGW(QUEUE_TAG, "message add to queue");
+        }
+        else {
+            // ESP_LOGW(QUEUE_TAG, "message is repeated");
+        }
     }
 }
 /**
@@ -116,7 +130,7 @@ bool queue_is_empty(p_queue q)
 }
 
 /**
- * @description: 打印队列
+ * @description: 打印队列(有问题)
  * @param {p_queue} q
  * @return {*}
  */

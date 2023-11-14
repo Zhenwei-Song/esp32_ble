@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-13 16:46:06
+ * @LastEditTime: 2023-11-14 11:28:13
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -12,6 +12,8 @@
  * 实现了字符串的拼接（帧头 + 实际内容）
  * 添加了吞吐量测试
  * 添加了rssi
+ * 添加了发送和接收消息队列，用单独的task进行处理
+ * 添加了路由表
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
 
@@ -65,22 +67,24 @@ static void switch_adv_data_task(void *pvParameters)
     while (1) {
         if (xSemaphoreTake(xMutex1, portMAX_DELAY) == pdTRUE) {
             // adv_data_change();
-            adv_data_ff1[8] = i;
+            adv_data_31[30] = i;
             i++;
-            data_match(adv_data_name, adv_data_ff1);
             if (i == 16) {
                 i = 1;
             }
-            esp_ble_gap_config_adv_data_raw(adv_data_final, data_1_size + data_2_size);
+            // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
+            queue_push(&send_queue, adv_data_31);
+            queue_push(&send_queue, adv_data_31);
+            queue_push(&send_queue, adv_data_31);
         }
         xSemaphoreGive(xMutex1); // 释放互斥信号量
         // uint32_t random_delay = (rand() % (MAX_DELAY_MS - MIN_DELAY_MS + 1)) + MIN_DELAY_MS;
-        vTaskDelay(pdMS_TO_TICKS(DATA_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
 #ifdef QUEUE
-void ble_rec_data_task(void *pvParameters)
+static void ble_rec_data_task(void *pvParameters)
 {
     uint8_t *user_data = NULL;
     uint8_t *user_data2 = NULL;
@@ -89,13 +93,6 @@ void ble_rec_data_task(void *pvParameters)
     uint8_t user_data2_len = 0;
     while (1) {
         if (!queue_is_empty(&rec_queue)) {
-#if 0
-            rec_data = queue_pop(&rec_queue);
-            if (rec_data != NULL) {
-                esp_log_buffer_hex(QUEUE_TAG, rec_data, 31);
-                free(rec_data);
-            }
-#else
             rec_data = queue_pop(&rec_queue);
             if (rec_data != NULL) {
                 user_data = esp_ble_resolve_adv_data(rec_data,
@@ -110,13 +107,12 @@ void ble_rec_data_task(void *pvParameters)
                 esp_log_buffer_hex("", user_data2, user_data2_len);
                 free(rec_data);
             }
-            vTaskDelay(pdMS_TO_TICKS(5000));
-#endif
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 }
 
-void ble_send_data_task(void *pvParameters)
+static void ble_send_data_task(void *pvParameters)
 {
     uint8_t *send_data = NULL;
     while (1) {
@@ -128,7 +124,7 @@ void ble_send_data_task(void *pvParameters)
                 free(send_data);
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 #endif // QUEUE
@@ -172,7 +168,7 @@ static void ble_scan_task(void *pvParameters)
 }
 #endif
 
-void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
+static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     uint8_t *adv_name = NULL;
     uint8_t adv_name_len = 0;
@@ -198,7 +194,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
         }
         else {
             // esp_ble_gap_start_scanning(duration);
-            ESP_LOGI(TAG, "Advertising start successfully");
+            // ESP_LOGI(TAG, "Advertising start successfully");
 #ifdef GPIO
             gpio_set_level(GPIO_OUTPUT_IO_0, 0);
             esp_ble_gap_stop_advertising();
@@ -266,7 +262,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
 #ifdef QUEUE
-                    queue_push(&rec_queue, scan_result->scan_rst.ble_adv);
+                    queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv);
                     // queue_print(&rec_queue);
 #else
                     user_data = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
@@ -318,7 +314,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 }
 
 #ifdef QUEUE
-void all_queue_init(void)
+static void all_queue_init(void)
 {
     queue_init(&rec_queue);
     queue_init(&send_queue);
@@ -440,6 +436,7 @@ void app_main(void)
 // xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
 //  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
 #ifdef QUEUE
+    xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 1024, NULL, 0, NULL);
     xTaskCreate(ble_send_data_task, "ble_send_data_task", 4096, NULL, 0, NULL);
     xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 0, NULL);
 #endif // QUEUE
