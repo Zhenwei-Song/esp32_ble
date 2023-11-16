@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 14:40:59
+ * @LastEditTime: 2023-11-16 14:56:40
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -150,7 +150,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
 
     insert_routing_node(&neighbor_table, temp_info->node_id, temp_info->is_root,
                         temp_info->is_connected, temp_info->quality, temp_info->distance);
-    if (temp_info->is_root == false) { // 自己不是root
+    if (info->is_root == false) { // 自己不是root
 
         /* -------------------------------------------------------------------------- */
         /*                                  更新自己info                                  */
@@ -167,5 +167,13 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
         else { // 未入网
             info->is_connected |= 0;
         }
+        ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
+        ESP_LOGI(DATA_TAG, "root_id:");
+        esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
+        ESP_LOGI(DATA_TAG, "is_root:%d", info->is_root);
+        ESP_LOGI(DATA_TAG, "is_connected:%d", info->is_connected);
+        ESP_LOGI(DATA_TAG, "quality:");
+        ESP_LOGI(DATA_TAG, "distance:%d", info->distance);
+        ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
     }
 }
