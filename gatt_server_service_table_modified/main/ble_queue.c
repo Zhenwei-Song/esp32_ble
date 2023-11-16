@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-08 16:36:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-14 14:32:25
+ * @LastEditTime: 2023-11-15 20:57:14
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble_queue.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -49,7 +49,7 @@ void queue_push(p_queue q, uint8_t *data)
 }
 
 /**
- * @description:
+ * @description: 带重复性检查（检查队列最后一项）的push
  * @param {p_queue} q
  * @param {uint8_t} *data
  * @return {*}
@@ -63,7 +63,7 @@ void queue_push_with_check(p_queue q, uint8_t *data)
         q->head = q->tail = new_node_head;
         new_node_head->next = NULL;
         q->tail->next = NULL;
-        //ESP_LOGW(QUEUE_TAG, "message add to head");
+        // ESP_LOGW(QUEUE_TAG, "message add to head");
     }
     else {
         repeated = memcmp(data, q->tail->data, queue_data_length);
@@ -80,7 +80,7 @@ void queue_push_with_check(p_queue q, uint8_t *data)
                 new_node->next = NULL;
                 q->tail->next = NULL;
             }
-            //ESP_LOGW(QUEUE_TAG, "message add to queue");
+            // ESP_LOGW(QUEUE_TAG, "message add to queue");
         }
         else {
             // ESP_LOGW(QUEUE_TAG, "message is repeated");
@@ -95,17 +95,20 @@ void queue_push_with_check(p_queue q, uint8_t *data)
 uint8_t *queue_pop(p_queue q)
 {
     if (q->head != NULL) {
-        // uint8_t *pop_data = NULL;
         uint8_t *pop_data = (uint8_t *)malloc(sizeof(uint8_t) * queue_data_length);
         if (pop_data == NULL) {
             ESP_LOGE(QUEUE_TAG, "malloc failed");
             return NULL;
         }
         else {
-            // pop_data = q->head->data;
             memcpy(pop_data, q->head->data, queue_data_length);
             p_qnode temp = q->head;
-            q->head = q->head->next;
+            if (q->head->next == NULL) { // 仅有一个node
+                q->head = q->tail = NULL;
+            }
+            else {
+                q->head = q->head->next;
+            }
             free(temp);
             return pop_data;
         }
