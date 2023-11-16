@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-14 11:28:13
+ * @LastEditTime: 2023-11-16 10:54:39
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -26,6 +26,7 @@
 #include "ble_queue.h"
 #endif // QUEUE
 #ifdef ROUTINGTABLE
+#include "esp_mac.h"
 #include "routing_table.h"
 #endif // ROUTINGTABLE
 #ifdef BUTTON
@@ -33,6 +34,10 @@
 #endif
 
 #include "data_manage.h"
+
+#define REFRESH_ROUTING_TABLE_TIME 2000
+#define ADV_TIME 2000
+#define REC_TIME 1900
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -48,67 +53,78 @@ static uint64_t current_time = 0;
 static uint64_t cal_len = 0;
 #endif // THROUGHPUT
 
-#ifdef ROUTINGTABLE
-routing_table my_routing_table;
-#endif // ROUTINGTABLE
 #ifdef QUEUE
 queue rec_queue;
 queue send_queue;
 #endif // QUEUE
 
-/**
- * @description: 广播数据切换任务，最后一个字节从0x01变换到0x0f,重复循环
- * @param {void} *pvParameters
- * @return {*}
- */
-static void switch_adv_data_task(void *pvParameters)
+#ifdef ROUTINGTABLE
+static void ble_routing_table_task(void *pvParameters)
 {
-    char i = 0;
     while (1) {
-        if (xSemaphoreTake(xMutex1, portMAX_DELAY) == pdTRUE) {
-            // adv_data_change();
-            adv_data_31[30] = i;
-            i++;
-            if (i == 16) {
-                i = 1;
-            }
-            // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
-            queue_push(&send_queue, adv_data_31);
-            queue_push(&send_queue, adv_data_31);
-            queue_push(&send_queue, adv_data_31);
-        }
-        xSemaphoreGive(xMutex1); // 释放互斥信号量
-        // uint32_t random_delay = (rand() % (MAX_DELAY_MS - MIN_DELAY_MS + 1)) + MIN_DELAY_MS;
-        vTaskDelay(pdMS_TO_TICKS(100));
+        refresh_cnt_routing_table(&neighbor_table);
+        vTaskDelay(pdMS_TO_TICKS(REFRESH_ROUTING_TABLE_TIME));
     }
 }
+#endif // ROUTINGTABLE
 
 #ifdef QUEUE
 static void ble_rec_data_task(void *pvParameters)
 {
-    uint8_t *user_data = NULL;
-    uint8_t *user_data2 = NULL;
+    uint8_t *phello = NULL;
+    uint8_t *main_quest = NULL;
+    uint8_t *main_answer = NULL;
+    uint8_t *second_quest = NULL;
+    uint8_t *second_answer = NULL;
+    uint8_t *repair = NULL;
     uint8_t *rec_data = NULL;
-    uint8_t user_data_len = 0;
-    uint8_t user_data2_len = 0;
+    uint8_t phello_len = 0;
+    uint8_t main_quest_len = 0;
+    uint8_t main_answer_len = 0;
+    uint8_t second_quest_len = 0;
+    uint8_t second_answer_len = 0;
+    uint8_t repair_len = 0;
     while (1) {
         if (!queue_is_empty(&rec_queue)) {
             rec_data = queue_pop(&rec_queue);
             if (rec_data != NULL) {
-                user_data = esp_ble_resolve_adv_data(rec_data,
-                                                     ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
-                user_data2 = esp_ble_resolve_adv_data(rec_data,
-                                                      ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
-                ESP_LOGI(TAG, "ADV_DATA:");
-                esp_log_buffer_hex(TAG, rec_data, 31);
-                ESP_LOGI(TAG, "USER_DATA:");
-                esp_log_buffer_hex(TAG, user_data, user_data_len);
-                ESP_LOGI(TAG, "USER_DATA2:");
-                esp_log_buffer_hex("", user_data2, user_data2_len);
+                phello = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_PHELLO, &phello_len);
+                main_quest = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANHSP, &main_quest_len);
+                main_answer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_HSRREP, &main_answer_len);
+                second_quest = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &second_quest_len);
+                second_answer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &second_answer_len);
+                repair = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RERR, &repair_len);
+                //ESP_LOGI(TAG, "ADV_DATA:");
+                //esp_log_buffer_hex(TAG, rec_data, 31);
+                if (phello != NULL) {
+                    resolve_phello(phello, &my_information);
+                    ESP_LOGI(TAG, "PHELLO_DATA:");
+                    esp_log_buffer_hex(TAG, phello, phello_len);
+                }
+                if (main_quest != NULL) {
+                    ESP_LOGI(TAG, "MAIN_QUEST_DATA:");
+                    esp_log_buffer_hex(TAG, main_quest, main_quest_len);
+                }
+                if (main_answer != NULL) {
+                    ESP_LOGI(TAG, "MAIN_ANSWER_DATA:");
+                    esp_log_buffer_hex(TAG, main_answer, main_answer_len);
+                }
+                if (second_quest != NULL) {
+                    ESP_LOGI(TAG, "SECOND_QUEST_DATA:");
+                    esp_log_buffer_hex(TAG, second_quest, second_quest_len);
+                }
+                if (second_answer != NULL) {
+                    ESP_LOGI(TAG, "SECOND_ANSWER_DATA:");
+                    esp_log_buffer_hex(TAG, second_answer, second_answer_len);
+                }
+                if (repair != NULL) {
+                    ESP_LOGI(TAG, "REPAIR_DATA:");
+                    esp_log_buffer_hex(TAG, repair, repair_len);
+                }
                 free(rec_data);
             }
-            vTaskDelay(pdMS_TO_TICKS(1000));
         }
+        vTaskDelay(pdMS_TO_TICKS(REC_TIME));
     }
 }
 
@@ -116,6 +132,11 @@ static void ble_send_data_task(void *pvParameters)
 {
     uint8_t *send_data = NULL;
     while (1) {
+
+        memcpy(adv_data_final, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final);
+        queue_push(&send_queue, adv_data_final);
+
         if (!queue_is_empty(&send_queue)) {
             send_data = queue_pop(&send_queue);
             if (send_data != NULL) {
@@ -124,7 +145,7 @@ static void ble_send_data_task(void *pvParameters)
                 free(send_data);
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(ADV_TIME));
     }
 }
 #endif // QUEUE
@@ -172,10 +193,6 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 {
     uint8_t *adv_name = NULL;
     uint8_t adv_name_len = 0;
-    uint8_t *user_data = NULL;
-    uint8_t *user_data2 = NULL;
-    uint8_t user_data_len = 0;
-    uint8_t user_data2_len = 0;
 #ifdef THROUGHPUT
     uint32_t bit_rate = 0;
 #endif // THROUGHPUT
@@ -261,39 +278,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
-#ifdef QUEUE
                     queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv);
                     // queue_print(&rec_queue);
-#else
-                    user_data = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
-                                                         ESP_BLE_AD_TYPE_USER_1, &user_data_len); // 解析用户数据1
-                    user_data2 = esp_ble_resolve_adv_data(scan_result->scan_rst.ble_adv,
-                                                          ESP_BLE_AD_TYPE_USER_2, &user_data2_len); // 解析用户数据2
-
-                    ESP_LOGI(TAG, "MAC:");
-                    esp_log_buffer_hex(TAG, scan_result->scan_rst.bda, 6); // 打印扫描到设备的MAC地址
-                                                                           // 打印广播数据
-                    ESP_LOGI(TAG, "ADV_DATA:");
-                    esp_log_buffer_hex(TAG, param->scan_rst.ble_adv, param->scan_rst.adv_data_len);
-                    ESP_LOGI(TAG, "USER_DATA:");
-                    esp_log_buffer_hex(TAG, user_data, user_data_len);
-                    // ESP_LOGW(TAG, "RSSI is %d", param->scan_rst.rssi);
-                    ESP_LOGI(TAG, "USER_DATA2:");
-                    esp_log_buffer_hex("", user_data2, user_data2_len);
-#endif // QUEUE
-
 #endif // ndef THROUGHPUT
-#ifdef ROUTINGTABLE
-#if 0
-                    routing_note *new_routing_table_node = (routing_note *)malloc(sizeof(routing_note));
-                    memcpy(new_routing_table_node->mac, scan_result->scan_rst.bda, 6);
-                    insert_routing_node(&my_routing_table, new_routing_table_node);
-                    // print_routing_table(&my_routing_table);
-#else
-                    insert_routing_node(&my_routing_table, scan_result->scan_rst.bda);
-                    // print_routing_table(&my_routing_table);
-#endif
-#endif // ROUTINGTABLE
 
 #ifdef GPIO
                     gpio_set_level(GPIO_OUTPUT_IO_1, flag);
@@ -313,6 +300,16 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
     }
 }
 
+#ifdef ROUTINGTABLE
+static void routing_table_init(void)
+{
+    uint8_t my_mac[6];
+    init_routing_table(&neighbor_table);
+    esp_read_mac(my_mac, ESP_MAC_BT);
+    my_info_init(&my_information, my_mac);
+}
+#endif // ROUTINGTABLE
+
 #ifdef QUEUE
 static void all_queue_init(void)
 {
@@ -327,8 +324,8 @@ void button_ops()
 {
     uint8_t mac_test[] = {
         0xfc, 0xb4, 0x67, 0x50, 0xeb, 0x36};
-    remove_routing_node(&my_routing_table, mac_test);
-    print_routing_table(&my_routing_table);
+    remove_routing_node(&neighbor_table, mac_test);
+    print_routing_table(&neighbor_table);
 }
 #else
 void button_ops()
@@ -422,7 +419,7 @@ void app_main(void)
     esp_gpio_init();
 #endif // GPIO
 #ifdef ROUTINGTABLE
-    init_routing_table(&my_routing_table);
+    routing_table_init();
 #endif // ROUTINGTABLE
 #ifdef QUEUE
     all_queue_init();
@@ -436,9 +433,9 @@ void app_main(void)
 // xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
 //  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
 #ifdef QUEUE
-    xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 1024, NULL, 0, NULL);
-    xTaskCreate(ble_send_data_task, "ble_send_data_task", 4096, NULL, 0, NULL);
-    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 0, NULL);
+    xTaskCreate(ble_routing_table_task, "ble_routing_table_task", 4096, NULL, 5, NULL);
+    xTaskCreate(ble_send_data_task, "ble_send_data_task", 4096, NULL, 5, NULL);
+    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 5, NULL);
 #endif // QUEUE
 #ifdef BUTTON
     board_init();
