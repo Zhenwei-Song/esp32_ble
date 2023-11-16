@@ -13,7 +13,7 @@
  * 添加了吞吐量测试
  * 添加了rssi
  * 添加了发送和接收消息队列，用单独的task进行处理
- * 添加了路由表
+ * 添加了路由表，添加了路由表的刷新机制
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
 
@@ -94,8 +94,8 @@ static void ble_rec_data_task(void *pvParameters)
                 second_quest = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &second_quest_len);
                 second_answer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &second_answer_len);
                 repair = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RERR, &repair_len);
-                //ESP_LOGI(TAG, "ADV_DATA:");
-                //esp_log_buffer_hex(TAG, rec_data, 31);
+                // ESP_LOGI(TAG, "ADV_DATA:");
+                // esp_log_buffer_hex(TAG, rec_data, 31);
                 if (phello != NULL) {
                     resolve_phello(phello, &my_information);
                     ESP_LOGI(TAG, "PHELLO_DATA:");
