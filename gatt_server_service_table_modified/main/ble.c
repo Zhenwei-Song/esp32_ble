@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 09:22:00
+ * @LastEditTime: 2023-11-17 19:11:30
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -37,7 +37,7 @@
 
 #define REFRESH_ROUTING_TABLE_TIME 1000
 #define ADV_TIME 2000
-#define REC_TIME 1000
+#define REC_TIME 100
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -63,6 +63,12 @@ static void ble_routing_table_task(void *pvParameters)
 {
     while (1) {
         refresh_cnt_routing_table(&neighbor_table, &my_information);
+        if (refresh_flag == true) { // 状态改变，立即发送hello
+            refresh_flag = false;
+            memcpy(adv_data_final, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            esp_ble_gap_config_adv_data_raw(adv_data_final, 31);
+            esp_ble_gap_start_advertising(&adv_params);
+        }
 #if 1
         ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
         ESP_LOGI(DATA_TAG, "root_id:");

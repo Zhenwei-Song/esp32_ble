@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 10:28:55
+ * @LastEditTime: 2023-11-17 14:45:33
  * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -11,6 +11,8 @@
 #include "esp_log.h"
 
 #include "routing_table.h"
+
+bool refresh_flag = false;
 
 routing_table neighbor_table;
 /**
@@ -245,9 +247,10 @@ void refresh_cnt_routing_table(p_routing_table table, p_my_info info)
                 if (temp->is_root == true) { // 若表中的root节点无了，更新自己info
                     info->update = info->update + 1;
                     info->is_connected = false;
-                    info->distance = 0;
+                    info->distance = 100;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
+                    refresh_flag = true;
                     ESP_LOGE(ROUTING_TAG, "root deleted");
                 }
                 p_routing_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针

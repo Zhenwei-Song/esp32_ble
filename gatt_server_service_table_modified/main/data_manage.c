@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 09:51:34
+ * @LastEditTime: 2023-11-17 17:28:49
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -150,41 +150,52 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
     insert_routing_node(&neighbor_table, temp_info->node_id, temp_info->is_root,
                         temp_info->is_connected, temp_info->quality, temp_info->distance);
 
-    if (info->is_root == true) { // 若root dead后重回网络
-        if (info->update < temp_info->update) {
-            if (temp_info->update == 255) // 启动循环
+    if (info->is_root == true) {                // 若root dead后重回网络
+        if (temp_info->update > info->update) { // 自己重新上电
+            if (temp_info->update == 255)       // 启动循环
                 info->update = 2;
             else
                 info->update = temp_info->update + 1;
+            ESP_LOGE(ROUTING_TAG, "!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         }
     }
-    else {                                                                                                             // 自己不是root
-        if (temp_info->update > info->update || (info->update - temp_info->update == 253 && temp_info->update == 2)) { // 获得最新消息包，更新当前信息
-            if (temp_info->is_connected == false) {                                                                    // root is dead
-                info->is_connected |= 0;
-                info->distance = 0;
-            }
-            else if (temp_info->is_connected == true) {   // root is back
-                info->is_connected |= 1;                  // 自己也已入网
-                info->distance = temp_info->distance + 1; // 距离加1
-            }
-            info->update = temp_info->update;
-            memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
-
-            // memcpy(info->next_id, temp_info->next_id, ID_LEN); // 把发送该hello包的节点作为自己的到root下一跳id
-        }
-        else if (temp_info->update == info->update) { // root is alive 正常接收
-            if (temp_info->is_connected == 1) {
-                if (info->distance == 0 || info->distance - temp_info->distance > 1)
-                    info->distance = temp_info->distance + 1; // 距离加1
-                info->is_connected |= 1;                      // 自己也已入网
+    else {                                                      // 自己非root
+        if (temp_info->distance == 100) {                       // 接收到root dead信息
+            if (info->distance == 1 || info->distance == 100) { // 自己是根节点的邻居节点，或者已经更新过自己的info
             }
             else {
                 info->is_connected |= 0;
+                info->distance = 100;
+                info->update = temp_info->update;
+                memset(info->root_id, 0, ID_LEN);
+                memset(info->next_id, 0, ID_LEN);
             }
-            memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
         }
-        else { // 旧update的包，丢弃
+        else {                                                                 // 不是root dead信息
+            if (info->distance > temp_info->distance || info->distance == 0) { // 仅从父节点更新自己状态
+                // 自己不是root
+                if (temp_info->update > info->update || (info->update - temp_info->update == 253 && temp_info->update == 2)) { // root is back，更新当前信息
+                    info->is_connected |= 1;                                                                                   // 自己也已入网
+                    info->distance = temp_info->distance + 1;                                                                  // 距离加1
+                    info->update = temp_info->update;
+                    memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
+
+                    // memcpy(info->next_id, temp_info->next_id, ID_LEN); // 把发送该hello包的节点作为自己的到root下一跳id
+                }
+                else if (temp_info->update == info->update) { // root is alive 正常接收
+                    if (temp_info->is_connected == 1) {
+                        if (info->distance == 0 || info->distance - temp_info->distance > 1)
+                            info->distance = temp_info->distance + 1; // 距离加1
+                        info->is_connected |= 1;                      // 自己也已入网
+                    }
+                    else {
+                        info->is_connected |= 0;
+                    }
+                    memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
+                }
+                else { // 旧update的包，丢弃
+                }
+            }
         }
     }
 }

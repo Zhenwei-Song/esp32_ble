@@ -38,6 +38,8 @@ typedef struct routing_table {
 
 extern routing_table neighbor_table;
 
+extern bool refresh_flag;
+
 void init_routing_table(p_routing_table table);
 
 // int insert_routing_node(p_routing_table table, p_routing_note new_routing);
