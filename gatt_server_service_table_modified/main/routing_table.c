@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 20:26:28
+ * @LastEditTime: 2023-11-17 09:09:50
  * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -101,9 +101,10 @@ void remove_routing_node_from_node(p_routing_table table, p_routing_note old_rou
                 else
                     prev = prev->next;
             }
-            if (prev != NULL)
+            if (prev != NULL) {
                 free(prev->next);
-            prev->next = old_routing->next;
+                prev->next = old_routing->next;
+            }
         }
     }
 }
@@ -246,17 +247,16 @@ void refresh_cnt_routing_table(p_routing_table table, p_my_info info)
                     memset(info->next_id, 0, ID_LEN);
                     ESP_LOGE(ROUTING_TAG, "root deleted");
                 }
+                p_routing_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
                 remove_routing_node_from_node(table, temp);
+                temp = next_temp; // 更新temp为下一个节点
                 ESP_LOGW(ROUTING_TAG, "routing table node deleted");
-                break;
             }
             else {
                 temp->count = temp->count - 1;
+                temp = temp->next; // 继续到下一个节点
                 // ESP_LOGW(ROUTING_TAG, "routing table refreshed");
             }
-            temp = temp->next;
-            if (temp == NULL)
-                break;
         }
         print_routing_table(table);
     }
