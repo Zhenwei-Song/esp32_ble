@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 09:11:42
+ * @LastEditTime: 2023-11-17 10:22:46
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -18,7 +18,7 @@
 
 #include "esp_log.h"
 
-#define SELF_ROOT
+// #define SELF_ROOT
 
 #define DATA_TAG "DATA"
 

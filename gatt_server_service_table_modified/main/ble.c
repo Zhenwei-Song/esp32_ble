@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 20:29:47
+ * @LastEditTime: 2023-11-17 09:22:00
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -145,7 +145,7 @@ static void ble_send_data_task(void *pvParameters)
 
         memcpy(adv_data_final, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
         queue_push(&send_queue, adv_data_final);
-        queue_push(&send_queue, adv_data_final);
+        // queue_push(&send_queue, adv_data_final);
 
         if (!queue_is_empty(&send_queue)) {
             send_data = queue_pop(&send_queue);

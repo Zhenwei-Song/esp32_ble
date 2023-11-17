@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 09:09:50
+ * @LastEditTime: 2023-11-17 10:28:55
  * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -36,6 +36,7 @@ void init_routing_table(p_routing_table table)
 int insert_routing_node(p_routing_table table, uint8_t *new_id, bool is_root, bool is_connected, uint8_t *quality, uint8_t distance)
 {
     p_routing_note new_node = (p_routing_note)malloc(sizeof(routing_note));
+    p_routing_note prev = NULL;
     if (new_node == NULL) {
         ESP_LOGE(ROUTING_TAG, "malloc failed");
         return -1;
@@ -52,6 +53,7 @@ int insert_routing_node(p_routing_table table, uint8_t *new_id, bool is_root, bo
     if (table->head == NULL) { // 路由表为空
         table->head = new_node;
         new_node->next = NULL;
+        return 0;
     }
     else {
         while (cur != NULL) {
@@ -65,17 +67,17 @@ int insert_routing_node(p_routing_table table, uint8_t *new_id, bool is_root, bo
                 cur->distance = new_node->distance;
                 cur->count = new_node->count; // 重新计数
                 free(new_node);
-                goto exit;
+                return 0;
             }
-            if (cur->next == NULL) // 链表中的最后一个节点
-                break;
+            prev = cur;
             cur = cur->next;
         }
-        cur->next = new_node; // 表尾添加新项
-        new_node->next = NULL;
+        if (prev != NULL) {
+            prev->next = new_node; // 表尾添加新项
+            new_node->next = NULL;
+        }
     }
     ESP_LOGW(ROUTING_TAG, "ADD NEW NOTE");
-exit:
     return 0;
 }
 
@@ -102,8 +104,8 @@ void remove_routing_node_from_node(p_routing_table table, p_routing_note old_rou
                     prev = prev->next;
             }
             if (prev != NULL) {
-                free(prev->next);
                 prev->next = old_routing->next;
+                free(old_routing);
             }
         }
     }
@@ -133,8 +135,9 @@ void remove_routing_node(p_routing_table table, uint8_t *old_id)
                     prev = prev->next;
             }
             if (prev != NULL) {
+                p_routing_note old_routing = prev->next;
                 prev->next = prev->next->next;
-                free(prev->next);
+                free(old_routing);
             }
         }
     }

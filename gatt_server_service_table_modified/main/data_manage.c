@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 08:42:00
+ * @LastEditTime: 2023-11-17 09:51:34
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -151,12 +151,16 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
                         temp_info->is_connected, temp_info->quality, temp_info->distance);
 
     if (info->is_root == true) { // 若root dead后重回网络
-        if (info->update < temp_info->update)
-            info->update = temp_info->update + 1;
+        if (info->update < temp_info->update) {
+            if (temp_info->update == 255) // 启动循环
+                info->update = 2;
+            else
+                info->update = temp_info->update + 1;
+        }
     }
-    else {                                          // 自己不是root
-        if (temp_info->update > info->update) {     // 获得最新消息包，更新当前信息
-            if (temp_info->is_connected == false) { // root is dead
+    else {                                                                                                             // 自己不是root
+        if (temp_info->update > info->update || (info->update - temp_info->update == 253 && temp_info->update == 2)) { // 获得最新消息包，更新当前信息
+            if (temp_info->is_connected == false) {                                                                    // root is dead
                 info->is_connected |= 0;
                 info->distance = 0;
             }
