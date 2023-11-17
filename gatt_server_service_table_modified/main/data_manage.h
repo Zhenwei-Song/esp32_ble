@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 11:20:13
+ * @LastEditTime: 2023-11-17 08:45:01
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -35,10 +35,11 @@ typedef struct my_info {
     bool is_root;
     bool ready_to_connect;
     bool is_connected;
-    int8_t distance;
+    uint8_t distance;
     uint8_t my_id[ID_LEN];
     uint8_t root_id[ID_LEN];
     uint8_t next_id[ID_LEN];
+    uint8_t update;
 } my_info, *p_my_info;
 
 typedef struct phello_info {
@@ -50,6 +51,8 @@ typedef struct phello_info {
     uint8_t node_id[ID_LEN];
     uint8_t root_id[ID_LEN];
     uint8_t next_id[ID_LEN];
+    uint8_t update;
+
 } phello_info, *p_phello_info;
 
 extern my_info my_information;

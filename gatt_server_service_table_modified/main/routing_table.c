@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 10:54:20
+ * @LastEditTime: 2023-11-16 20:26:28
  * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -232,14 +232,23 @@ int8_t get_routing_node_distance(p_routing_table table, uint8_t *id)
  * @param {p_routing_table} table
  * @return {*}
  */
-void refresh_cnt_routing_table(p_routing_table table)
+void refresh_cnt_routing_table(p_routing_table table, p_my_info info)
 {
     if (table->head != NULL) {
         p_routing_note temp = table->head;
         while (temp != NULL) {
             if (temp->count == 0) {
+                if (temp->is_root == true) { // 若表中的root节点无了，更新自己info
+                    info->update = info->update + 1;
+                    info->is_connected = false;
+                    info->distance = 0;
+                    memset(info->root_id, 0, ID_LEN);
+                    memset(info->next_id, 0, ID_LEN);
+                    ESP_LOGE(ROUTING_TAG, "root deleted");
+                }
                 remove_routing_node_from_node(table, temp);
                 ESP_LOGW(ROUTING_TAG, "routing table node deleted");
+                break;
             }
             else {
                 temp->count = temp->count - 1;
@@ -266,10 +275,10 @@ void print_routing_table(p_routing_table table)
         esp_log_buffer_hex(ROUTING_TAG, temp->id, ID_LEN);
         ESP_LOGI(ROUTING_TAG, "is_root:%d", temp->is_root);
         ESP_LOGI(ROUTING_TAG, "is_connected:%d", temp->is_connected);
-        ESP_LOGI(ROUTING_TAG, "quality:");
-        esp_log_buffer_hex(ROUTING_TAG, temp->quality, QUALITY_LEN);
+        // ESP_LOGI(ROUTING_TAG, "quality:");
+        // esp_log_buffer_hex(ROUTING_TAG, temp->quality, QUALITY_LEN);
         ESP_LOGI(ROUTING_TAG, "distance:%d", temp->distance);
-        ESP_LOGI(ROUTING_TAG, "count:%d", temp->count);
+        // ESP_LOGI(ROUTING_TAG, "count:%d", temp->count);
         temp = temp->next;
     }
     ESP_LOGI(ROUTING_TAG, "****************************Printing routing table is finished *****************************************");

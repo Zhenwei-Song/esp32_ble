@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 10:54:39
+ * @LastEditTime: 2023-11-16 20:29:47
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -35,9 +35,9 @@
 
 #include "data_manage.h"
 
-#define REFRESH_ROUTING_TABLE_TIME 2000
+#define REFRESH_ROUTING_TABLE_TIME 1000
 #define ADV_TIME 2000
-#define REC_TIME 1900
+#define REC_TIME 1000
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -62,7 +62,17 @@ queue send_queue;
 static void ble_routing_table_task(void *pvParameters)
 {
     while (1) {
-        refresh_cnt_routing_table(&neighbor_table);
+        refresh_cnt_routing_table(&neighbor_table, &my_information);
+#if 1
+        ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
+        ESP_LOGI(DATA_TAG, "root_id:");
+        esp_log_buffer_hex(DATA_TAG, my_information.root_id, ID_LEN);
+        ESP_LOGI(DATA_TAG, "is_root:%d", my_information.is_root);
+        ESP_LOGI(DATA_TAG, "is_connected:%d", my_information.is_connected);
+        ESP_LOGI(DATA_TAG, "distance:%d", my_information.distance);
+        ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
+        ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
+#endif
         vTaskDelay(pdMS_TO_TICKS(REFRESH_ROUTING_TABLE_TIME));
     }
 }

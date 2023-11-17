@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ROUTING_TABLE_COUNT 6
+#define ROUTING_TABLE_COUNT 10
 
 typedef struct routing_note {
     uint8_t id[ID_LEN];
@@ -55,7 +55,7 @@ int set_routing_node_distance(p_routing_table table, uint8_t *id, int8_t distanc
 
 int8_t get_routing_node_distance(p_routing_table table, uint8_t *id);
 
-void refresh_cnt_routing_table(p_routing_table table);
+void refresh_cnt_routing_table(p_routing_table table, p_my_info info);
 
 void print_routing_table(p_routing_table table);
 

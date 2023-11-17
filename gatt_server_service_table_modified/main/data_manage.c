@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-16 14:56:40
+ * @LastEditTime: 2023-11-17 08:42:00
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -78,9 +78,14 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_root = true;
     my_information->is_connected = true;
     my_information->distance = 0;
+    my_information->update = 0;
     memcpy(my_information->root_id, my_mac + 4, ID_LEN);
     memcpy(my_information->next_id, my_mac + 4, ID_LEN);
 #else
+    my_information->is_root = false;
+    my_information->is_connected = false;
+    my_information->distance = 0;
+    my_information->update = 0;
 #endif
 }
 
@@ -99,27 +104,21 @@ uint8_t *generate_phello(p_my_info info)
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
 
-    if (info->is_root) {   // 自己是根节点
+    if (info->is_root)     // 自己是根节点
         phello[1] |= 0x11; // 节点类型，入网标志
-    }
-    else {                      // 自己不是根节点
-        phello[1] |= 0x00;      // 节点类型为非root
-        if (info->is_connected) // 已入网
-            phello[1] |= 0x01;
-        else // 未入网
-            phello[1] |= 0x00;
-    }
-    if (info->moveable) // 移动性
-        phello[0] |= 0x01;
-    else
-        phello[0] |= 0x00;
-    phello[4] |= info->distance; // 到root跳数
-    phello[8] |= temp_my_id[0];  // 节点ID
+    else                   // 自己不是根节点
+        phello[1] |= 0x00; // 节点类型为非root
+
+    phello[1] |= info->is_connected; // 入网标志
+    phello[0] |= info->moveable;     // 移动性
+    phello[4] |= info->distance;     // 到root跳数
+    phello[8] |= temp_my_id[0];      // 节点ID
     phello[9] |= temp_my_id[1];
     phello[10] |= temp_root_id[0]; // root ID
     phello[11] |= temp_root_id[1];
     phello[12] |= temp_next_id[0]; // next ID
     phello[13] |= temp_next_id[1];
+    phello[15] |= info->update; // 最新包号
     memcpy(phello_final + 2, phello, PHELLO_DATA_LEN);
     return phello_final;
 }
@@ -143,37 +142,45 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
     memcpy(temp_info->node_id, temp + 8, ID_LEN);
     memcpy(temp_info->root_id, temp + 10, ID_LEN);
     memcpy(temp_info->next_id, temp + 12, ID_LEN);
+    temp_info->update = temp[15];
 
     /* -------------------------------------------------------------------------- */
     /*                                    更新邻居表                                   */
     /* -------------------------------------------------------------------------- */
-
     insert_routing_node(&neighbor_table, temp_info->node_id, temp_info->is_root,
                         temp_info->is_connected, temp_info->quality, temp_info->distance);
-    if (info->is_root == false) { // 自己不是root
 
-        /* -------------------------------------------------------------------------- */
-        /*                                  更新自己info                                  */
-        /* -------------------------------------------------------------------------- */
+    if (info->is_root == true) { // 若root dead后重回网络
+        if (info->update < temp_info->update)
+            info->update = temp_info->update + 1;
+    }
+    else {                                          // 自己不是root
+        if (temp_info->update > info->update) {     // 获得最新消息包，更新当前信息
+            if (temp_info->is_connected == false) { // root is dead
+                info->is_connected |= 0;
+                info->distance = 0;
+            }
+            else if (temp_info->is_connected == true) {   // root is back
+                info->is_connected |= 1;                  // 自己也已入网
+                info->distance = temp_info->distance + 1; // 距离加1
+            }
+            info->update = temp_info->update;
+            memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
 
-        memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
-        if (temp_info->is_connected) {                     // 若已入网
-            // info->ready_to_connect = 1;
-            info->is_connected |= 1;                           // 自己也已入网
-            info->distance = temp_info->distance + 1;          // 距离加1
-            memcpy(info->root_id, temp_info->root_id, ID_LEN); // root id
-            memcpy(info->next_id, temp_info->next_id, ID_LEN); // 把发送该hello包的节点作为自己的到root下一跳id
+            // memcpy(info->next_id, temp_info->next_id, ID_LEN); // 把发送该hello包的节点作为自己的到root下一跳id
         }
-        else { // 未入网
-            info->is_connected |= 0;
+        else if (temp_info->update == info->update) { // root is alive 正常接收
+            if (temp_info->is_connected == 1) {
+                if (info->distance == 0 || info->distance - temp_info->distance > 1)
+                    info->distance = temp_info->distance + 1; // 距离加1
+                info->is_connected |= 1;                      // 自己也已入网
+            }
+            else {
+                info->is_connected |= 0;
+            }
+            memcpy(info->root_id, temp_info->root_id, ID_LEN); // 存储root id
         }
-        ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
-        ESP_LOGI(DATA_TAG, "root_id:");
-        esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
-        ESP_LOGI(DATA_TAG, "is_root:%d", info->is_root);
-        ESP_LOGI(DATA_TAG, "is_connected:%d", info->is_connected);
-        ESP_LOGI(DATA_TAG, "quality:");
-        ESP_LOGI(DATA_TAG, "distance:%d", info->distance);
-        ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
+        else { // 旧update的包，丢弃
+        }
     }
 }
