@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 19:11:30
+ * @LastEditTime: 2023-11-20 14:00:44
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -63,19 +63,30 @@ static void ble_routing_table_task(void *pvParameters)
 {
     while (1) {
         refresh_cnt_routing_table(&neighbor_table, &my_information);
+#ifndef SELF_ROOT
+        update_quality_of_routing_table(&neighbor_table);
+        set_my_next_id_quality_and_distance(&neighbor_table, &my_information);
+#endif
+        print_routing_table(&neighbor_table);
+#if 1
         if (refresh_flag == true) { // 状态改变，立即发送hello
             refresh_flag = false;
             memcpy(adv_data_final, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
             esp_ble_gap_config_adv_data_raw(adv_data_final, 31);
             esp_ble_gap_start_advertising(&adv_params);
         }
+#endif
 #if 1
         ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
         ESP_LOGI(DATA_TAG, "root_id:");
         esp_log_buffer_hex(DATA_TAG, my_information.root_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "is_root:%d", my_information.is_root);
         ESP_LOGI(DATA_TAG, "is_connected:%d", my_information.is_connected);
+        ESP_LOGI(DATA_TAG, "next_id:");
+        esp_log_buffer_hex(DATA_TAG, my_information.next_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "distance:%d", my_information.distance);
+        ESP_LOGI(DATA_TAG, "quality:");
+        esp_log_buffer_hex(DATA_TAG, my_information.quality, QUALITY_LEN);
         ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
         ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
 #endif
@@ -113,9 +124,10 @@ static void ble_rec_data_task(void *pvParameters)
                 // ESP_LOGI(TAG, "ADV_DATA:");
                 // esp_log_buffer_hex(TAG, rec_data, 31);
                 if (phello != NULL) {
-                    resolve_phello(phello, &my_information);
+                    resolve_phello(phello, &my_information, temp_rssi);
                     ESP_LOGI(TAG, "PHELLO_DATA:");
                     esp_log_buffer_hex(TAG, phello, phello_len);
+                    ESP_LOGE(TAG, "rssi:%d", temp_rssi);
                 }
                 if (main_quest != NULL) {
                     ESP_LOGI(TAG, "MAIN_QUEST_DATA:");
@@ -150,7 +162,8 @@ static void ble_send_data_task(void *pvParameters)
     while (1) {
 
         memcpy(adv_data_final, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
-        queue_push(&send_queue, adv_data_final);
+        queue_push(&send_queue, adv_data_final, 0);
+        queue_push(&send_queue, adv_data_final, 0);
         // queue_push(&send_queue, adv_data_final);
 
         if (!queue_is_empty(&send_queue)) {
@@ -294,7 +307,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
-                    queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv);
+                    queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv, scan_result->scan_rst.rssi);
                     // queue_print(&rec_queue);
 #endif // ndef THROUGHPUT
 

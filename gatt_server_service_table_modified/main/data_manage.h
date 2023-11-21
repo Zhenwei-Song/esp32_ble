@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 19:14:56
+ * @LastEditTime: 2023-11-21 14:51:39
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -18,9 +18,13 @@
 
 #include "esp_log.h"
 
-#define SELF_ROOT
+// #define SELF_ROOT
 
 #define DATA_TAG "DATA"
+
+#define THRESHHOLD_HIGH 5
+#define THRESHHOLD_LOW 2
+
 
 #define ID_LEN 2
 #define QUALITY_LEN 2
@@ -36,6 +40,7 @@ typedef struct my_info {
     bool ready_to_connect;
     bool is_connected;
     uint8_t distance;
+    uint8_t quality[QUALITY_LEN];
     uint8_t my_id[ID_LEN];
     uint8_t root_id[ID_LEN];
     uint8_t next_id[ID_LEN];
@@ -47,6 +52,7 @@ typedef struct phello_info {
     bool is_root;
     bool is_connected;
     uint8_t distance;
+    // uint8_t quality[QUALITY_LEN];
     uint8_t quality[QUALITY_LEN];
     uint8_t node_id[ID_LEN];
     uint8_t root_id[ID_LEN];
@@ -74,11 +80,13 @@ extern uint8_t adv_data_62[62];
 
 uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t data_2_len);
 
+uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance);
+
 void my_info_init(p_my_info my_information, uint8_t *my_mac);
 
 uint8_t *generate_phello(p_my_info info);
 
-void resolve_phello(uint8_t *phello_data, p_my_info info);
+void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi);
 
 #if 0
 uint8_t *generate_main_quest(p_my_info info);

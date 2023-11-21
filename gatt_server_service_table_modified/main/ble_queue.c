@@ -2,12 +2,14 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-08 16:36:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-15 20:57:14
+ * @LastEditTime: 2023-11-18 09:20:32
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble_queue.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
 #include "ble_queue.h"
+
+int temp_rssi = 0;
 
 /**
  * @description: 初始化队列结构
@@ -26,7 +28,7 @@ void queue_init(p_queue q)
  * @param {uint8_t} data
  * @return {*}
  */
-void queue_push(p_queue q, uint8_t *data)
+void queue_push(p_queue q, uint8_t *data, int rssi)
 {
     p_qnode new_node = (p_qnode)malloc(sizeof(qnode));
     if (new_node == NULL) {
@@ -34,6 +36,7 @@ void queue_push(p_queue q, uint8_t *data)
     }
     else {
         memcpy(new_node->data, data, queue_data_length);
+        new_node->rssi = rssi;
         if (q->head == NULL) { // 队列为空
             q->head = q->tail = new_node;
             // new_node->next = NULL;
@@ -54,12 +57,13 @@ void queue_push(p_queue q, uint8_t *data)
  * @param {uint8_t} *data
  * @return {*}
  */
-void queue_push_with_check(p_queue q, uint8_t *data)
+void queue_push_with_check(p_queue q, uint8_t *data, int rssi)
 {
     int repeated = -1;
     if (q->tail == NULL) { // 队列为空
         p_qnode new_node_head = (p_qnode)malloc(sizeof(qnode));
         memcpy(new_node_head->data, data, queue_data_length);
+        new_node_head->rssi = rssi;
         q->head = q->tail = new_node_head;
         new_node_head->next = NULL;
         q->tail->next = NULL;
@@ -75,6 +79,7 @@ void queue_push_with_check(p_queue q, uint8_t *data)
             }
             else {
                 memcpy(new_node->data, data, queue_data_length);
+                new_node->rssi = rssi;
                 q->tail->next = new_node;
                 q->tail = new_node;
                 new_node->next = NULL;
@@ -102,6 +107,7 @@ uint8_t *queue_pop(p_queue q)
         }
         else {
             memcpy(pop_data, q->head->data, queue_data_length);
+            temp_rssi = q->head->rssi;
             p_qnode temp = q->head;
             if (q->head->next == NULL) { // 仅有一个node
                 q->head = q->tail = NULL;
@@ -117,6 +123,15 @@ uint8_t *queue_pop(p_queue q)
         ESP_LOGW(QUEUE_TAG, "pop NULL");
         return NULL;
     }
+}
+
+int get_queue_node_rssi(p_queue q)
+{
+    if (q->head != NULL) {
+        temp_rssi = q->head->rssi;
+        return temp_rssi;
+    }
+    return -1;
 }
 
 /**

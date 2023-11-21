@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-08 16:35:47
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-11 10:08:22
+ * @LastEditTime: 2023-11-17 20:52:31
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble_queue.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -26,6 +26,7 @@
 
 typedef struct qnode {
     uint8_t data[queue_data_length];
+    int rssi;
     struct qnode *next;
 } qnode, *p_qnode;
 
@@ -34,13 +35,17 @@ typedef struct queue {
     p_qnode tail;
 } queue, *p_queue;
 
+extern int temp_rssi;
+
 void queue_init(p_queue q);
 
-void queue_push(p_queue q, uint8_t *data);
+void queue_push(p_queue q, uint8_t *data, int rssi);
 
-void queue_push_with_check(p_queue q, uint8_t *data);
+void queue_push_with_check(p_queue q, uint8_t *data, int rssi);
 
 uint8_t *queue_pop(p_queue q);
+
+int get_queue_node_rssi(p_queue q);
 
 bool queue_is_empty(p_queue q);
 

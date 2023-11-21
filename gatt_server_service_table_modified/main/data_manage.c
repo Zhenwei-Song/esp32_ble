@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-17 17:28:49
+ * @LastEditTime: 2023-11-21 15:10:48
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -13,6 +13,10 @@
 my_info my_information;
 
 uint8_t phello_final[PHELLO_FINAL_DATA_LEN] = {0x11, 0xf1};
+
+// uint8_t quality_final[QUALITY_LEN] = {0};
+
+uint8_t temp_quality_of_mine[QUALITY_LEN] = {0};
 
 uint8_t temp_data_31[FINAL_DATA_LEN] = {0};
 
@@ -57,13 +61,35 @@ uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t 
     }
 }
 
-/*
-mask:
-0X01:0000 0001
-0X02:0000 0010
-0X04:0000 0100
-0X08:0000 1000
-*/
+uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance) // 目前整数会超过255
+{
+    double temp_rssi = (double)(-rssi);
+    double temp_quality;
+    uint8_t *temp_quality_from_upper = (uint8_t *)malloc(sizeof(uint8_t) * QUALITY_LEN);
+    memcpy(temp_quality_from_upper, quality_from_upper, QUALITY_LEN);
+    double upper_integer_part = (double)temp_quality_from_upper[0];
+    double upper_decimal_part = (double)temp_quality_from_upper[1] / 100;
+    double upper_reconstructed_part = upper_integer_part + upper_decimal_part;
+    temp_quality = (upper_reconstructed_part + temp_rssi * (distance + 1)) / 10;
+    uint8_t my_integer_part = (uint8_t)temp_quality;                 // 得到整数部分
+    uint8_t my_decimal_part = (uint8_t)((temp_quality - my_integer_part) * 100); // 得到小数部分
+    temp_quality_of_mine[0] = my_integer_part;
+    temp_quality_of_mine[1] = my_decimal_part;
+    ESP_LOGE(DATA_TAG, "quality_calculate finished");
+    ESP_LOGW(DATA_TAG, "temp_quality_from_upper:");
+    esp_log_buffer_hex(DATA_TAG, temp_quality_from_upper, QUALITY_LEN);
+    ESP_LOGW(DATA_TAG, "temp_rssi :%f", temp_rssi);
+    ESP_LOGW(DATA_TAG, "upper_integer_part :%f", upper_integer_part);
+    ESP_LOGW(DATA_TAG, "upper_decimal_part :%f", upper_decimal_part);
+    ESP_LOGW(DATA_TAG, "upper_reconstructed_part :%f", upper_reconstructed_part);
+    ESP_LOGW(DATA_TAG, "my_integer_part :%d", my_integer_part);
+    ESP_LOGW(DATA_TAG, "my_decimal_part :%d", my_decimal_part);
+    ESP_LOGW(DATA_TAG, "temp_quality :%f", temp_quality);
+    ESP_LOGW(DATA_TAG, "calculate quality:");
+    esp_log_buffer_hex(DATA_TAG, temp_quality_of_mine, QUALITY_LEN);
+    free(temp_quality_from_upper);
+    return temp_quality_of_mine;
+}
 
 /**
  * @description:my_infomation初始化
@@ -78,6 +104,7 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_root = true;
     my_information->is_connected = true;
     my_information->distance = 0;
+    memset(my_information->quality, 0, QUALITY_LEN);
     my_information->update = 0;
     memcpy(my_information->root_id, my_mac + 4, ID_LEN);
     memcpy(my_information->next_id, my_mac + 4, ID_LEN);
@@ -85,6 +112,7 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_root = false;
     my_information->is_connected = false;
     my_information->distance = 0;
+    my_information->quality[0] = 255;
     my_information->update = 0;
 #endif
 }
@@ -94,15 +122,18 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
  * @param {p_my_info} info
  * @return {*} 返回生成的phello包（带adtype）
  */
-uint8_t *generate_phello(p_my_info info)
+uint8_t *
+generate_phello(p_my_info info)
 {
     uint8_t phello[PHELLO_DATA_LEN] = {0};
     uint8_t temp_my_id[ID_LEN];
     uint8_t temp_root_id[ID_LEN];
     uint8_t temp_next_id[ID_LEN];
+    uint8_t temp_quality[QUALITY_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
+    memcpy(temp_quality, info->quality, QUALITY_LEN);
 
     if (info->is_root)     // 自己是根节点
         phello[1] |= 0x11; // 节点类型，入网标志
@@ -112,7 +143,9 @@ uint8_t *generate_phello(p_my_info info)
     phello[1] |= info->is_connected; // 入网标志
     phello[0] |= info->moveable;     // 移动性
     phello[4] |= info->distance;     // 到root跳数
-    phello[8] |= temp_my_id[0];      // 节点ID
+    phello[6] |= temp_quality[0];    // 链路质量
+    phello[7] |= temp_quality[1];
+    phello[8] |= temp_my_id[0]; // 节点ID
     phello[9] |= temp_my_id[1];
     phello[10] |= temp_root_id[0]; // root ID
     phello[11] |= temp_root_id[1];
@@ -129,7 +162,7 @@ uint8_t *generate_phello(p_my_info info)
  * @param {p_my_info} info
  * @return {*}
  */
-void resolve_phello(uint8_t *phello_data, p_my_info info)
+void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
 {
     p_phello_info temp_info = (p_phello_info)malloc(sizeof(phello_info));
     uint8_t temp[PHELLO_DATA_LEN];
@@ -138,18 +171,30 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
     temp_info->is_root = ((temp[1] & 0x10) == 0x10 ? true : false);
     temp_info->is_connected = ((temp[1] & 0x01) == 0x01 ? true : false);
     temp_info->distance = temp[4];
+    // temp_info->quality = temp[7];
     memcpy(temp_info->quality, temp + 6, QUALITY_LEN);
     memcpy(temp_info->node_id, temp + 8, ID_LEN);
-    memcpy(temp_info->root_id, temp + 10, ID_LEN);
     memcpy(temp_info->next_id, temp + 12, ID_LEN);
     temp_info->update = temp[15];
+    if (info->is_root == false && temp_info->is_connected == true) {
+        memcpy(info->root_id, temp + 10, ID_LEN);
+    }
 
+#if 0
+    if (temp_info->is_connected) {
+        info->distance = temp_info->distance + 1;
+        memcpy(temp_quality, quality_calculate(rssi, temp_info->quality, info), QUALITY_LEN);
+    }
+    else {
+        memcpy(temp_quality, temp_info->quality, QUALITY_LEN);
+    }
+#endif
     /* -------------------------------------------------------------------------- */
     /*                                    更新邻居表                                   */
     /* -------------------------------------------------------------------------- */
     insert_routing_node(&neighbor_table, temp_info->node_id, temp_info->is_root,
-                        temp_info->is_connected, temp_info->quality, temp_info->distance);
-
+                        temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
+#if 0
     if (info->is_root == true) {                // 若root dead后重回网络
         if (temp_info->update > info->update) { // 自己重新上电
             if (temp_info->update == 255)       // 启动循环
@@ -198,4 +243,5 @@ void resolve_phello(uint8_t *phello_data, p_my_info info)
             }
         }
     }
+#endif
 }
