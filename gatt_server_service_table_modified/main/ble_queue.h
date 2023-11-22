@@ -35,6 +35,9 @@ typedef struct queue {
     p_qnode tail;
 } queue, *p_queue;
 
+extern queue rec_queue;
+extern queue send_queue;
+
 extern int temp_rssi;
 
 void queue_init(p_queue q);

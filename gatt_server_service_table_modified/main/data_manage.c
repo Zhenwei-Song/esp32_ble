@@ -2,28 +2,44 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-21 15:10:48
+ * @LastEditTime: 2023-11-22 17:13:37
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
 #include "data_manage.h"
-#include "routing_table.h"
+#include "ble_queue.h"
+#include "esp_gap_ble_api.h"
+#include "neighbor_table.h"
 
 my_info my_information;
 
-uint8_t phello_final[PHELLO_FINAL_DATA_LEN] = {0x11, 0xf1};
+uint8_t threshold_high[QUALITY_LEN] = {THRESHOLD_HIGH, 0X00};
 
-// uint8_t quality_final[QUALITY_LEN] = {0};
+uint8_t threshold_low[QUALITY_LEN] = {THRESHOLD_LOW, 0X00};
+
+uint8_t phello_final[PHELLO_FINAL_DATA_LEN] = {PHELLO_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_PHELLO};
+
+uint8_t anhsp_final[ANHSP_FINAL_DATA_LEN] = {ANHSP_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_ANHSP};
+
+uint8_t hsrrep_final[HSRREP_FINAL_DATA_LEN] = {HSRREP_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_HSRREP};
+
+uint8_t anrreq_final[ANRREQ_FINAL_DATA_LEN] = {ANRREQ_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_ANRREQ};
+
+uint8_t anrrep_final[ANRREP_FINAL_DATA_LEN] = {ANRREP_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_ANRREP};
 
 uint8_t temp_quality_of_mine[QUALITY_LEN] = {0};
 
 uint8_t temp_data_31[FINAL_DATA_LEN] = {0};
 
-uint8_t adv_data_final[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_hello[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_anhsp[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_hsrrep[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_anrrep[FINAL_DATA_LEN] = {0};
 
 uint8_t adv_data_name_7[HEAD_DATA_LEN] = {
-    0x06, 0x09, 'O', 'L', 'T', 'H', 'R'};
+    HEAD_DATA_LEN - 1, ESP_BLE_AD_TYPE_NAME_CMPL, 'O', 'L', 'T', 'H', 'R'};
 
 uint8_t adv_data_31[31] = {
     /* device name */
@@ -71,10 +87,11 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
     double upper_decimal_part = (double)temp_quality_from_upper[1] / 100;
     double upper_reconstructed_part = upper_integer_part + upper_decimal_part;
     temp_quality = (upper_reconstructed_part + temp_rssi * (distance + 1)) / 10;
-    uint8_t my_integer_part = (uint8_t)temp_quality;                 // 得到整数部分
+    uint8_t my_integer_part = (uint8_t)temp_quality;                             // 得到整数部分
     uint8_t my_decimal_part = (uint8_t)((temp_quality - my_integer_part) * 100); // 得到小数部分
-    temp_quality_of_mine[0] = my_integer_part;
-    temp_quality_of_mine[1] = my_decimal_part;
+    temp_quality_of_mine[0] = 255 - my_integer_part;
+    temp_quality_of_mine[1] = 255 - my_decimal_part;
+#if 0
     ESP_LOGE(DATA_TAG, "quality_calculate finished");
     ESP_LOGW(DATA_TAG, "temp_quality_from_upper:");
     esp_log_buffer_hex(DATA_TAG, temp_quality_from_upper, QUALITY_LEN);
@@ -87,6 +104,7 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
     ESP_LOGW(DATA_TAG, "temp_quality :%f", temp_quality);
     ESP_LOGW(DATA_TAG, "calculate quality:");
     esp_log_buffer_hex(DATA_TAG, temp_quality_of_mine, QUALITY_LEN);
+#endif
     free(temp_quality_from_upper);
     return temp_quality_of_mine;
 }
@@ -122,8 +140,7 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
  * @param {p_my_info} info
  * @return {*} 返回生成的phello包（带adtype）
  */
-uint8_t *
-generate_phello(p_my_info info)
+uint8_t *generate_phello(p_my_info info)
 {
     uint8_t phello[PHELLO_DATA_LEN] = {0};
     uint8_t temp_my_id[ID_LEN];
@@ -192,7 +209,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     /* -------------------------------------------------------------------------- */
     /*                                    更新邻居表                                   */
     /* -------------------------------------------------------------------------- */
-    insert_routing_node(&neighbor_table, temp_info->node_id, temp_info->is_root,
+    insert_routing_node(&my_neighbor_table, temp_info->node_id, temp_info->is_root,
                         temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
 #if 0
     if (info->is_root == true) {                // 若root dead后重回网络
@@ -244,4 +261,216 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
         }
     }
 #endif
+}
+
+/**
+ * @description:在阈值中间区域时，发送的入网请求包
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_anhsp(p_my_info info)
+{
+    uint8_t anhsp[ANHSP_DATA_LEN] = {0};
+    uint8_t temp_my_id[ID_LEN];
+    uint8_t temp_root_id[ID_LEN];
+    uint8_t temp_next_id[ID_LEN];
+    uint8_t temp_quality[QUALITY_LEN];
+    memcpy(temp_my_id, info->my_id, ID_LEN);
+    memcpy(temp_root_id, info->root_id, ID_LEN);
+    memcpy(temp_next_id, info->next_id, ID_LEN);
+    memcpy(temp_quality, info->quality, QUALITY_LEN);
+
+    anhsp[1] |= info->distance;
+    anhsp[2] |= temp_quality[0];
+    anhsp[3] |= temp_quality[1];
+    anhsp[4] |= temp_my_id[0]; // 节点ID
+    anhsp[5] |= temp_my_id[1];
+    anhsp[6] |= temp_my_id[0]; // 源 ID
+    anhsp[7] |= temp_my_id[1];
+    anhsp[8] |= temp_next_id[0]; // next ID
+    anhsp[9] |= temp_next_id[1];
+    anhsp[10] |= temp_root_id[0]; // 上一任root ID
+    anhsp[11] |= temp_root_id[1];
+    memcpy(anhsp_final + 2, anhsp, ANHSP_DATA_LEN);
+    return anhsp_final;
+}
+
+/**
+ * @description: 在阈值中间区域时，发送的入网请求包（中转）
+ * @param {p_anhsp_info} anhsp_info
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_transfer_anhsp(p_anhsp_info anhsp_info, p_my_info info)
+{
+    uint8_t anhsp[ANHSP_DATA_LEN] = {0};
+    uint8_t temp_my_id[ID_LEN];
+    uint8_t temp_root_id[ID_LEN];
+    uint8_t temp_source_id[ID_LEN];
+    uint8_t temp_next_id[ID_LEN];
+    uint8_t temp_quality[QUALITY_LEN];
+    memcpy(temp_my_id, info->my_id, ID_LEN);
+    memcpy(temp_root_id, info->root_id, ID_LEN);
+    memcpy(temp_source_id, anhsp_info->source_id, ID_LEN);
+    memcpy(temp_next_id, info->next_id, ID_LEN);
+    memcpy(temp_quality, anhsp_info->quality, QUALITY_LEN);
+
+    anhsp[1] |= anhsp_info->distance;
+    anhsp[2] |= temp_quality[0];
+    anhsp[3] |= temp_quality[1];
+    anhsp[4] |= temp_my_id[0]; // 节点ID
+    anhsp[5] |= temp_my_id[1];
+    anhsp[6] |= temp_source_id[0]; // 源 ID
+    anhsp[7] |= temp_source_id[1];
+    anhsp[8] |= temp_next_id[0]; // next ID
+    anhsp[9] |= temp_next_id[1];
+    anhsp[10] |= temp_root_id[0]; // 上一任root ID
+    anhsp[11] |= temp_root_id[1];
+    memcpy(anhsp_final + 2, anhsp, ANHSP_DATA_LEN);
+    return anhsp_final;
+}
+
+/**
+ * @description: 在阈值中间区域时，发送的入网请求包（解析）
+ * @param {uint8_t} *anhsp_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
+void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
+{
+    p_anhsp_info temp_info = (p_anhsp_info)malloc(sizeof(anhsp_info));
+    uint8_t temp[ANHSP_DATA_LEN];
+    memcpy(temp, anhsp_data, ANHSP_DATA_LEN);
+    temp_info->distance = temp[1];
+    memcpy(temp_info->quality, temp + 2, QUALITY_LEN);
+    memcpy(temp_info->node_id, temp + 4, ID_LEN);
+    memcpy(temp_info->source_id, temp + 6, ID_LEN);
+    memcpy(temp_info->next_id, temp + 8, ID_LEN);
+    memcpy(temp_info->last_root_id, temp + 10, ID_LEN);
+
+    /* -------------------------------------------------------------------------- */
+    /*                                  开始转发到root                                 */
+    /* -------------------------------------------------------------------------- */
+    if (info->is_root) { // 根节点 回复hsrrep
+        memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
+    }
+    else {
+        if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) { // 由自己中转，开始转发
+            memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_transfer_anhsp(temp_info, info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_anhsp, 0);
+        }
+        else { // 不是由自己中转，不处理
+        }
+    }
+}
+
+/**
+ * @description: 根节点向发送中间区域入网请求包的节点发出的回应包
+ * @param {p_anhsp_info} anhsp_info
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_hsrrep(p_anhsp_info anhsp_info, p_my_info info)
+{
+    uint8_t hsrrep[HSRREP_DATA_LEN] = {0};
+    uint8_t temp_my_id[ID_LEN];
+    uint8_t temp_destination_id[ID_LEN];
+    memcpy(temp_my_id, info->my_id, ID_LEN);
+    memcpy(temp_destination_id, anhsp_info->source_id, ID_LEN);
+
+    hsrrep[4] |= temp_my_id[0]; // 节点ID
+    hsrrep[5] |= temp_my_id[1];
+    hsrrep[6] |= temp_destination_id[0]; // 目的 ID
+    hsrrep[7] |= temp_destination_id[1];
+
+    memcpy(hsrrep_final + 2, hsrrep, HSRREP_DATA_LEN);
+    return hsrrep_final;
+}
+
+/**
+ * @description: 根节点向发送中间区域入网请求包的节点发出的回应包（中转）
+ * @param {p_hsrrep_info} hsrrep_info
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info)
+{
+    uint8_t hsrrep[HSRREP_DATA_LEN] = {0};
+    uint8_t temp_my_id[ID_LEN];
+    uint8_t temp_destination_id[ID_LEN];
+    memcpy(temp_my_id, info->my_id, ID_LEN);
+    memcpy(temp_destination_id, hsrrep_info->destination_id, ID_LEN);
+
+    hsrrep[4] |= temp_my_id[0]; // 节点ID
+    hsrrep[5] |= temp_my_id[1];
+    hsrrep[6] |= temp_destination_id[0]; // 目的 ID
+    hsrrep[7] |= temp_destination_id[1];
+
+    memcpy(hsrrep_final + 2, hsrrep, HSRREP_DATA_LEN);
+    return hsrrep_final;
+}
+
+/**
+ * @description: 根节点向发送中间区域入网请求包的节点发出的回应包（解析）
+ * @param {uint8_t} *hsrrep_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
+void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
+{
+    p_hsrrep_info temp_info = (p_hsrrep_info)malloc(sizeof(hsrrep_info));
+    uint8_t temp[ANHSP_DATA_LEN];
+    memcpy(temp, hsrrep_data, ANHSP_DATA_LEN);
+    memcpy(temp_info->node_id, temp + 4, ID_LEN);
+    memcpy(temp_info->destination_id, temp + 6, ID_LEN);
+    if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
+        info->is_connected |= true;                                    // TODO:1.未加入等待时间   2.未收到的情况待写
+    }
+    else {                                // 不是发给我的hsrrep
+        if (info->is_connected == true) { // 由入网的节点转发
+            memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
+        }
+    }
+}
+
+/**
+ * @description: 在阈值下部区域时，发送的入网请求包
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_anrreq(p_my_info info)
+{
+    uint8_t anrreq[ANRREQ_DATA_LEN] = {0};
+    uint8_t temp_threshold[THRESHOLD_LEN];
+    uint8_t temp_source_id[ID_LEN];
+    uint8_t temp_serial_number[SERIAL_NUM_LEN];
+    memcpy(temp_threshold, info->threshold, THRESHOLD_LEN);
+    memcpy(temp_source_id, info->my_id, ID_LEN);
+    // memcpy(temp_destination_id, anhsp_info->destination_id, ID_LEN);
+    // TODO:序列号
+    anrreq[0] |= temp_threshold[0]; // 链路质量阈值
+    anrreq[1] |= temp_threshold[1];
+    anrreq[2] |= temp_source_id[0]; // 源 ID
+    anrreq[3] |= temp_source_id[1];
+
+    memcpy(anrreq_final + 2, anrreq, ANRREQ_DATA_LEN);
+    return anrreq_final;
+}
+
+/**
+ * @description: 在阈值下部区域时，发送的入网请求包（解析）
+ * @param {uint8_t} *anrreq_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
+void resolve_anrreq(uint8_t *anrreq_data, p_my_info info)
+{
+    p_anrreq_info temp_info = (p_anrreq_info)malloc(sizeof(anrreq_info));
+    uint8_t temp[ANRREQ_DATA_LEN];
+    memcpy(temp, anrreq_data, ANRREQ_DATA_LEN);
+    memcpy(temp_info->quality_threshold, temp, THRESHOLD_LEN);
+    memcpy(temp_info->source_id, temp + 2, ID_LEN);
+    // TODO:序列号
 }
