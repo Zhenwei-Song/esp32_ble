@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-22 17:13:37
+ * @LastEditTime: 2023-11-24 15:56:44
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -11,6 +11,10 @@
 #include "ble_queue.h"
 #include "esp_gap_ble_api.h"
 #include "neighbor_table.h"
+#include "routing_table.h"
+
+SemaphoreHandle_t xCountingSemaphore_send;
+SemaphoreHandle_t xCountingSemaphore_receive;
 
 my_info my_information;
 
@@ -77,7 +81,7 @@ uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t 
     }
 }
 
-uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance) // 目前整数会超过255
+uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance)
 {
     double temp_rssi = (double)(-rssi);
     double temp_quality;
@@ -89,8 +93,8 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
     temp_quality = (upper_reconstructed_part + temp_rssi * (distance + 1)) / 10;
     uint8_t my_integer_part = (uint8_t)temp_quality;                             // 得到整数部分
     uint8_t my_decimal_part = (uint8_t)((temp_quality - my_integer_part) * 100); // 得到小数部分
-    temp_quality_of_mine[0] = 255 - my_integer_part;
-    temp_quality_of_mine[1] = 255 - my_decimal_part;
+    temp_quality_of_mine[0] = 100 - my_integer_part;
+    temp_quality_of_mine[1] = 100 - my_decimal_part;
 #if 0
     ESP_LOGE(DATA_TAG, "quality_calculate finished");
     ESP_LOGW(DATA_TAG, "temp_quality_from_upper:");
@@ -130,7 +134,7 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_root = false;
     my_information->is_connected = false;
     my_information->distance = 0;
-    my_information->quality[0] = 255;
+    my_information->quality[0] = NOR_NODE_INIT_QUALITY;
     my_information->update = 0;
 #endif
 }
@@ -209,8 +213,8 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     /* -------------------------------------------------------------------------- */
     /*                                    更新邻居表                                   */
     /* -------------------------------------------------------------------------- */
-    insert_routing_node(&my_neighbor_table, temp_info->node_id, temp_info->is_root,
-                        temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
+    insert_neighbor_node(&my_neighbor_table, temp_info->node_id, temp_info->is_root,
+                         temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
 #if 0
     if (info->is_root == true) {                // 若root dead后重回网络
         if (temp_info->update > info->update) { // 自己重新上电
@@ -280,7 +284,7 @@ uint8_t *generate_anhsp(p_my_info info)
     memcpy(temp_next_id, info->next_id, ID_LEN);
     memcpy(temp_quality, info->quality, QUALITY_LEN);
 
-    anhsp[1] |= info->distance;
+    anhsp[1] |= 0; // 初始距离定为0
     anhsp[2] |= temp_quality[0];
     anhsp[3] |= temp_quality[1];
     anhsp[4] |= temp_my_id[0]; // 节点ID
@@ -315,7 +319,7 @@ uint8_t *generate_transfer_anhsp(p_anhsp_info anhsp_info, p_my_info info)
     memcpy(temp_next_id, info->next_id, ID_LEN);
     memcpy(temp_quality, anhsp_info->quality, QUALITY_LEN);
 
-    anhsp[1] |= anhsp_info->distance;
+    anhsp[1] |= anhsp_info->distance + 1; // 经过一次转发，距离加1
     anhsp[2] |= temp_quality[0];
     anhsp[3] |= temp_quality[1];
     anhsp[4] |= temp_my_id[0]; // 节点ID
@@ -352,15 +356,25 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
     /*                                  开始转发到root                                 */
     /* -------------------------------------------------------------------------- */
     if (info->is_root) { // 根节点 回复hsrrep
-        memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);
+        memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(info, temp_info->source_id), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
         queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
+        ESP_LOGE(DATA_TAG, "response hsrrep");
     }
     else {
         if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) { // 由自己中转，开始转发
+            insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_transfer_anhsp(temp_info, info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+            ESP_LOGE(DATA_TAG, "transer anhsp");
+            temp_info->distance = temp_info->distance + 1;
+            /// insert_routing_node(&my_routing_table, temp_info->source_id, temp_info->last_root_id, temp_info->node_id, temp_info->distance); // 记录入路由表，用于反向路由
+            print_routing_table(&my_routing_table);
         }
         else { // 不是由自己中转，不处理
+            ESP_LOGE(DATA_TAG, "get anhsp,but not transfer");
         }
     }
 }
@@ -371,19 +385,25 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
  * @param {p_my_info} info
  * @return {*}
  */
-uint8_t *generate_hsrrep(p_anhsp_info anhsp_info, p_my_info info)
+uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id)
 {
     uint8_t hsrrep[HSRREP_DATA_LEN] = {0};
     uint8_t temp_my_id[ID_LEN];
+    uint8_t *temp_next_id;
     uint8_t temp_destination_id[ID_LEN];
+    uint8_t temp_reverse_next_id[ID_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
-    memcpy(temp_destination_id, anhsp_info->source_id, ID_LEN);
-
+    memcpy(temp_destination_id, des_id, ID_LEN);
+    temp_next_id = get_next_id(&my_routing_table, des_id);
+    if (temp_next_id != NULL)
+        memcpy(temp_reverse_next_id, temp_next_id, ID_LEN);
+    hsrrep[1] |= 0;             // distance
     hsrrep[4] |= temp_my_id[0]; // 节点ID
     hsrrep[5] |= temp_my_id[1];
     hsrrep[6] |= temp_destination_id[0]; // 目的 ID
     hsrrep[7] |= temp_destination_id[1];
-
+    hsrrep[8] |= temp_reverse_next_id[0]; // 下一跳id
+    hsrrep[9] |= temp_reverse_next_id[1];
     memcpy(hsrrep_final + 2, hsrrep, HSRREP_DATA_LEN);
     return hsrrep_final;
 }
@@ -399,13 +419,18 @@ uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info)
     uint8_t hsrrep[HSRREP_DATA_LEN] = {0};
     uint8_t temp_my_id[ID_LEN];
     uint8_t temp_destination_id[ID_LEN];
+    uint8_t temp_reverse_next_id[ID_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, hsrrep_info->destination_id, ID_LEN);
+    memcpy(temp_reverse_next_id, get_next_id(&my_routing_table, temp_destination_id), ID_LEN);
 
+    hsrrep[1] = hsrrep_info->distance + 1;
     hsrrep[4] |= temp_my_id[0]; // 节点ID
     hsrrep[5] |= temp_my_id[1];
     hsrrep[6] |= temp_destination_id[0]; // 目的 ID
     hsrrep[7] |= temp_destination_id[1];
+    hsrrep[8] |= temp_reverse_next_id[0]; // 下一跳id
+    hsrrep[9] |= temp_reverse_next_id[1];
 
     memcpy(hsrrep_final + 2, hsrrep, HSRREP_DATA_LEN);
     return hsrrep_final;
@@ -424,14 +449,26 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
     memcpy(temp, hsrrep_data, ANHSP_DATA_LEN);
     memcpy(temp_info->node_id, temp + 4, ID_LEN);
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
-    if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
-        info->is_connected |= true;                                    // TODO:1.未加入等待时间   2.未收到的情况待写
-    }
-    else {                                // 不是发给我的hsrrep
-        if (info->is_connected == true) { // 由入网的节点转发
-            memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
-            queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
+    memcpy(temp_info->reverse_next_id, temp + 8, ID_LEN);
+    temp_info->distance = hsrrep_data[1];
+    if (memcmp(temp_info->reverse_next_id, info->my_id, ID_LEN) == 0) {
+        if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
+            info->is_connected |= true;                                    // TODO:1.未加入等待时间   2.未收到的情况待写
+            info->distance = temp_info->distance + 1;
+            ESP_LOGE(DATA_TAG, "receive hsrrep");
         }
+        else {                                // 不是发给我的hsrrep
+            if (info->is_connected == true) { // 由入网的节点转发
+                // insert_routing_node(&my_routing_table, info->root_id, temp_info->destination_id, temp_info->node_id, temp_info->distance + 1);
+                memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+                queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
+                xSemaphoreGive(xCountingSemaphore_send);
+                ESP_LOGE(DATA_TAG, "transfer hsrrep");
+            }
+        }
+    }
+    else {
+        ESP_LOGE(DATA_TAG, "hsrrep next id is not me,do nothing");
     }
 }
 

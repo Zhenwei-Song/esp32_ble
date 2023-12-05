@@ -2,8 +2,8 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-22 17:07:16
- * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
+ * @LastEditTime: 2023-12-04 20:19:31
+ * @FilePath: \esp32\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -13,13 +13,14 @@
 #include "ble_queue.h"
 #include "neighbor_table.h"
 
-bool refresh_flag = false;
+bool refresh_flag_for_neighbor = false;
 
 bool threshold_high_flag = false;
 
 bool threshold_low_flag = false;
 
 neighbor_table my_neighbor_table;
+
 /**
  * @description: 初始化路由表
  * @param {p_neighbor_table} table
@@ -45,7 +46,7 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
     p_neighbor_note new_node = (p_neighbor_note)malloc(sizeof(neighbor_note));
     p_neighbor_note prev = NULL;
     if (new_node == NULL) {
-        ESP_LOGE(ROUTING_TAG, "malloc failed");
+        ESP_LOGE(NEIGHBOR_TAG, "malloc failed");
         return -1;
     }
     memcpy(new_node->id, new_id, ID_LEN);
@@ -55,7 +56,7 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
     new_node->distance = distance;
     new_node->rssi = rssi;
     // new_node->quality = quality;
-    new_node->count = ROUTING_TABLE_COUNT;
+    new_node->count = NEIGHBOR_TABLE_COUNT;
     p_neighbor_note cur = table->head;
     int repeated = -1;
     if (table->head == NULL) { // 路由表为空
@@ -65,10 +66,10 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
     }
     else {
         while (cur != NULL) {
-            // ESP_LOGI(ROUTING_TAG, "table->head->id addr: %p", cur->id);
+            // ESP_LOGI(NEIGHBOR_TAG, "table->head->id addr: %p", cur->id);
             repeated = memcmp(cur->id, new_node->id, ID_LEN);
             if (repeated == 0) { // 检查重复,重复则更新
-                // ESP_LOGI(ROUTING_TAG, "repeated id address found");
+                // ESP_LOGI(NEIGHBOR_TAG, "repeated id address found");
                 cur->is_root = new_node->is_root;
                 cur->is_connected = new_node->is_connected;
                 memcpy(cur->quality, new_node->quality, QUALITY_LEN);
@@ -87,8 +88,8 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
             new_node->next = NULL;
         }
     }
-    ESP_LOGW(ROUTING_TAG, "ADD NEW NOTE");
-    print_neighbor_table(table);
+    ESP_LOGW(NEIGHBOR_TAG, "ADD NEW NEIGHBOT NOTE");
+    // print_neighbor_table(table);
     return 0;
 }
 
@@ -279,18 +280,18 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     info->distance = 100;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
-                    refresh_flag = true;
-                    ESP_LOGE(ROUTING_TAG, "root deleted");
+                    refresh_flag_for_neighbor = true;
+                    ESP_LOGE(NEIGHBOR_TAG, "root deleted");
                 }
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
                 remove_neighbor_node_from_node(table, temp);
                 temp = next_temp; // 更新temp为下一个节点
-                ESP_LOGW(ROUTING_TAG, "neighbor table node deleted");
+                ESP_LOGW(NEIGHBOR_TAG, "neighbor table node deleted");
             }
             else {
                 temp->count = temp->count - 1;
                 temp = temp->next; // 继续到下一个节点
-                // ESP_LOGW(ROUTING_TAG, "neighbor table refreshed");
+                // ESP_LOGW(NEIGHBOR_TAG, "neighbor table refreshed");
             }
         }
         // update_my_connection_info(table, info);
@@ -314,23 +315,23 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     // info->update = info->update + 1;
                     info->is_connected = false;
                     info->distance = 100;
-                    info->quality[0] = 0xff;
+                    info->quality[0] = NOR_NODE_INIT_QUALITY;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
-                    refresh_flag = true;
+                    refresh_flag_for_neighbor = true;
                     // update_my_connection_info(table, info);
-                    ESP_LOGE(ROUTING_TAG, "father deleted");
+                    ESP_LOGE(NEIGHBOR_TAG, "father deleted");
                 }
 #endif
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
                 remove_neighbor_node_from_node(table, temp);
                 temp = next_temp; // 更新temp为下一个节点
-                ESP_LOGW(ROUTING_TAG, "neighbor table node deleted");
+                ESP_LOGW(NEIGHBOR_TAG, "neighbor table node deleted");
             }
             else {
                 temp->count = temp->count - 1;
                 temp = temp->next; // 继续到下一个节点
-                // ESP_LOGW(ROUTING_TAG, "neighbor table refreshed");
+                // ESP_LOGW(NEIGHBOR_TAG, "neighbor table refreshed");
             }
         }
         // print_neighbor_table(table);
@@ -339,10 +340,10 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
 #ifndef SELF_ROOT
         info->is_connected = false;
         info->distance = 100;
-        info->quality[0] = 0xff;
+        info->quality[0] = NOR_NODE_INIT_QUALITY;
         memset(info->root_id, 0, ID_LEN);
         memset(info->next_id, 0, ID_LEN);
-        refresh_flag = true;
+        refresh_flag_for_neighbor = true;
 #endif
     }
 }
@@ -356,7 +357,7 @@ void update_quality_of_neighbor_table(p_neighbor_table table)
         while (temp != NULL) {
             if (temp->is_connected == true) { // 若为入网节点
                 memcpy(temp->quality_from_me, quality_calculate(temp->rssi, temp->quality, temp->distance), QUALITY_LEN);
-                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1
+                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0 && temp->is_root == true) { // 大于阈值1，且为root
                     threshold_high_flag |= 1;
                     threshold_low_flag |= 0;
                 }
@@ -379,6 +380,7 @@ void update_quality_of_neighbor_table(p_neighbor_table table)
     }
 }
 
+#if 0
 void threshold_high_ops(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
@@ -387,16 +389,16 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
             if (temp->is_connected == true) {                                          // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
                     info->is_connected |= 1;
-                    if (memcmp(info->next_id, temp->id, ID_LEN) == 0) { // 若它就是自己的next id，则更新自己的链路质量
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
-                    }
                     if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {              // 更新自己的next_id
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        }
+                        else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
                             info->distance = temp->distance + 1;
-                            refresh_flag = true; // 因为自己的next_id变了，所以立即广播hello
+                            refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                         }
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                     }
                 }
             }
@@ -405,6 +407,34 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
         // print_neighbor_table(table);
     }
 }
+#else
+void threshold_high_ops(p_neighbor_table table, p_my_info info)
+{
+    if (table->head != NULL) {
+        p_neighbor_note temp = table->head;
+        while (temp != NULL) {
+            if (temp->is_connected == true) {                                          // 若为入网节点
+                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
+                    info->is_connected |= 1;
+                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        }
+                        else { // 更新自己的next_id
+                            memcpy(info->next_id, temp->id, ID_LEN);
+                            info->distance = temp->distance + 1;
+                            refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        }
+                    }
+                }
+            }
+            temp = temp->next; // 继续到下一个节点
+        }
+        // print_neighbor_table(table);
+    }
+}
+#endif
 
 void threshold_between_ops(p_neighbor_table table, p_my_info info)
 {
@@ -413,15 +443,14 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         while (temp != NULL) {
             if (temp->is_connected == true) {                                                                                                           // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP
-
-                    if (memcmp(info->next_id, temp->id, ID_LEN) == 0) { // 若它就是自己的next id，则更新自己的链路质量
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
-                    }
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {              // 更新自己的next_id
-                            memcpy(info->next_id, temp->id, ID_LEN);
+                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) {                                                                // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                                                                             // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                         }
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        else { // 更新自己的next_id
+                            memcpy(info->next_id, temp->id, ID_LEN);
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        }
                     }
                 }
             }
@@ -432,9 +461,11 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         /* -------------------------------------------------------------------------- */
         memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
         queue_push(&send_queue, adv_data_final_for_anhsp, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
         // print_neighbor_table(table);
     }
 }
+
 #if 0
 void threshold_low_ops(p_neighbor_table table, p_my_info info)
 {
@@ -481,7 +512,7 @@ void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info)
                         if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {              // 更新了自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
                             info->distance = temp->distance + 1;
-                            refresh_flag = true; // 因为自己的next_id变了，所以立即广播hello
+                            refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
                         }
                         memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                     }
@@ -503,23 +534,23 @@ void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info)
 void print_neighbor_table(p_neighbor_table table)
 {
     p_neighbor_note temp = table->head;
-    ESP_LOGI(ROUTING_TAG, "****************************Start printing neighbor table:***********************************************");
+    ESP_LOGI(NEIGHBOR_TAG, "****************************Start printing neighbor table:***********************************************");
     while (temp != NULL) {
-        ESP_LOGI(ROUTING_TAG, "id:");
-        esp_log_buffer_hex(ROUTING_TAG, temp->id, ID_LEN);
-        ESP_LOGI(ROUTING_TAG, "is_root:%d", temp->is_root);
-        ESP_LOGI(ROUTING_TAG, "is_connected:%d", temp->is_connected);
-        ESP_LOGI(ROUTING_TAG, "quality:");
-        esp_log_buffer_hex(ROUTING_TAG, temp->quality, QUALITY_LEN);
+        ESP_LOGI(NEIGHBOR_TAG, "id:");
+        esp_log_buffer_hex(NEIGHBOR_TAG, temp->id, ID_LEN);
+        ESP_LOGI(NEIGHBOR_TAG, "is_root:%d", temp->is_root);
+        ESP_LOGI(NEIGHBOR_TAG, "is_connected:%d", temp->is_connected);
+        ESP_LOGI(NEIGHBOR_TAG, "quality:");
+        esp_log_buffer_hex(NEIGHBOR_TAG, temp->quality, QUALITY_LEN);
 #ifndef SELF_ROOT
-        ESP_LOGI(ROUTING_TAG, "quality from me:");
-        esp_log_buffer_hex(ROUTING_TAG, temp->quality_from_me, QUALITY_LEN);
+        ESP_LOGI(NEIGHBOR_TAG, "quality from me:");
+        esp_log_buffer_hex(NEIGHBOR_TAG, temp->quality_from_me, QUALITY_LEN);
 #endif
-        ESP_LOGI(ROUTING_TAG, "distance:%d", temp->distance);
-        // ESP_LOGI(ROUTING_TAG, "count:%d", temp->count);
+        ESP_LOGI(NEIGHBOR_TAG, "distance:%d", temp->distance);
+        // ESP_LOGI(NEIGHBOR_TAG, "count:%d", temp->count);
         temp = temp->next;
     }
-    ESP_LOGI(ROUTING_TAG, "****************************Printing neighbor table is finished *****************************************");
+    ESP_LOGI(NEIGHBOR_TAG, "****************************Printing neighbor table is finished *****************************************");
 }
 
 /**
@@ -529,8 +560,8 @@ void print_neighbor_table(p_neighbor_table table)
  */
 void destroy_neighbor_table(p_neighbor_table table)
 {
-    ESP_LOGW(ROUTING_TAG, "Destroying neighbor_table!");
+    ESP_LOGW(NEIGHBOR_TAG, "Destroying neighbor_table!");
     while (table->head != NULL)
         remove_neighbor_node_from_node(table, table->head);
-    ESP_LOGW(ROUTING_TAG, "Destroying neighbor_table finished!");
+    ESP_LOGW(NEIGHBOR_TAG, "Destroying neighbor_table finished!");
 }

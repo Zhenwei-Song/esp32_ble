@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-22 15:32:03
+ * @LastEditTime: 2023-12-04 20:23:13
  * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -16,11 +16,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+
 #include "esp_log.h"
 
-//#define SELF_ROOT
+// #define SELF_ROOT
 
 #define DATA_TAG "DATA"
+
+#define NOR_NODE_INIT_QUALITY 0
+#define NOR_NODE_INIT_DISTANCE 100
 
 #define ID_LEN 2
 #define QUALITY_LEN 2
@@ -30,7 +37,7 @@
 #define HEAD_DATA_LEN 7
 #define FINAL_DATA_LEN 31
 
-#define THRESHOLD_HIGH 1
+#define THRESHOLD_HIGH 100
 #define THRESHOLD_LOW 1
 
 #define PHELLO_FINAL_DATA_LEN 18
@@ -47,6 +54,9 @@
 
 #define ANRREP_FINAL_DATA_LEN 14
 #define ANRREP_DATA_LEN ANRREP_FINAL_DATA_LEN - 2
+
+extern SemaphoreHandle_t xCountingSemaphore_send;
+extern SemaphoreHandle_t xCountingSemaphore_receive;
 
 typedef struct my_info {
     bool moveable;
@@ -86,8 +96,10 @@ typedef struct anhsp_info {
 } anhsp_info, *p_anhsp_info;
 
 typedef struct hsrrep_info {
+    uint8_t distance;
     uint8_t node_id[ID_LEN];
     uint8_t destination_id[ID_LEN];
+    uint8_t reverse_next_id[ID_LEN];
 } hsrrep_info, *p_hsrrep_info;
 
 typedef struct anrreq_info {
@@ -143,7 +155,7 @@ uint8_t *generate_transfer_anhsp(p_anhsp_info anhsp_info, p_my_info info);
 
 void resolve_anhsp(uint8_t *anhsp_data, p_my_info info);
 
-uint8_t *generate_hsrrep(p_anhsp_info anhsp_info, p_my_info info);
+uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id);
 
 uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info);
 

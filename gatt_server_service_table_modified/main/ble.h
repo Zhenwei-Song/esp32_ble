@@ -47,8 +47,7 @@ enum {
 
 #define TAG "BLE_BROADCAST"
 
-SemaphoreHandle_t xMutex1;
-
+//SemaphoreHandle_t xMutex1;
 
 #define ADV_INTERVAL_MS 2000 // 广播间隔时间，单位：毫秒
 #define SCAN_INTERVAL_MS 225

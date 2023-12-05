@@ -2,15 +2,15 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:02
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-22 17:10:34
+ * @LastEditTime: 2023-11-24 17:20:06
  * @FilePath: \esp32\gatt_server_service_table_modified\main\neighbor_table.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
-#ifndef _ROUTING_TABLE_H_
-#define _ROUTING_TABLE_H_
+#ifndef _NEIGHBOR_TABLE_H_
+#define _NEIGHBOR_TABLE_H_
 
-#define ROUTING_TAG "ROUTING_TABLE"
+#define NEIGHBOR_TAG "NEIGHBOR_TABLE"
 
 #include "data_manage.h"
 #include <inttypes.h>
@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define ROUTING_TABLE_COUNT 10
+#define NEIGHBOR_TABLE_COUNT 10
 
 typedef struct neighbor_note {
     uint8_t id[ID_LEN];
@@ -39,15 +39,9 @@ typedef struct neighbor_table {
     p_neighbor_note head;
 } neighbor_table, *p_neighbor_table;
 
-typedef struct connected_node {
-    uint8_t id[ID_LEN];
-    uint8_t quality[QUALITY_LEN];
-    uint8_t distance;
-} connected_node, *p_connected_node;
-
 extern neighbor_table my_neighbor_table;
 
-extern bool refresh_flag;
+extern bool refresh_flag_for_neighbor;
 
 extern bool threshold_high_flag;
 
@@ -86,4 +80,4 @@ void print_neighbor_table(p_neighbor_table table);
 
 void destroy_neighbor_table(p_neighbor_table table);
 
-#endif // _ROUTING_TABLE_H_
+#endif // _NEIGHBOR_TABLE_H_

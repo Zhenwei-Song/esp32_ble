@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-22 17:12:55
+ * @LastEditTime: 2023-12-05 11:21:34
  * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 该代码用于接收测试（循环发送01到0f的包）
@@ -28,16 +28,36 @@
 #ifdef ROUTINGTABLE
 #include "esp_mac.h"
 #include "neighbor_table.h"
+#include "routing_table.h"
 #endif // ROUTINGTABLE
 #ifdef BUTTON
 #include "board.h"
 #endif
 
 #include "data_manage.h"
+// 181 B5
+// 10  0A
+
+// 235 EB
+// 54  36
+
+// 202 CA
+// 230 E6
+
+// 119 77(ROOT)
+// 74 4A
+#define FILTERED_ID_H 119
+#define FILTERED_ID_L 75
+static uint8_t filtered_id[ID_LEN] = {FILTERED_ID_H, FILTERED_ID_L};
+static uint8_t filtered_id_774a[ID_LEN] = {119, 74};
+static uint8_t filtered_id_cae6[ID_LEN] = {202, 230};
+static uint8_t filtered_id_eb36[ID_LEN] = {235, 54};
+static uint8_t filtered_id_b50a[ID_LEN] = {181, 10};
 
 #define REFRESH_ROUTING_TABLE_TIME 1000
-#define ADV_TIME 2000
-#define REC_TIME 100
+#define ADV_TIME 1000
+#define REC_TIME 50
+#define HELLO_TIME 2000
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -56,36 +76,51 @@ static uint64_t cal_len = 0;
 queue rec_queue;
 queue send_queue;
 
-#ifdef ROUTINGTABLE
+static void hello_task(void *pvParameters)
+{
+    while (1) {
+        memcpy(adv_data_final_for_hello, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final_for_hello, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
+        vTaskDelay(pdMS_TO_TICKS(HELLO_TIME));
+    }
+}
+
 static void ble_routing_table_task(void *pvParameters)
 {
     while (1) {
-        refresh_cnt_routing_table(&my_neighbor_table, &my_information);
+        refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
-        update_quality_of_routing_table(&my_neighbor_table);
-        if (threshold_high_flag == true) {
-            ESP_LOGE(DATA_TAG, "threshold_high_flag");
-            threshold_high_ops(&my_neighbor_table, &my_information);
-        }
-        else if (threshold_low_flag == true) {
-            // threshold_between_ops(&my_neighbor_table, &my_information);
-        }
-        else {
+        update_quality_of_neighbor_table(&my_neighbor_table);
+        if (my_information.is_connected == false) {
+            if (threshold_high_flag == true) {
+                ESP_LOGE(DATA_TAG, "threshold_high_flag");
+                threshold_high_ops(&my_neighbor_table, &my_information);
+            }
+            else if (threshold_low_flag == true) {
+                ESP_LOGE(DATA_TAG, "threshold_between_flag");
+                threshold_between_ops(&my_neighbor_table, &my_information);
+            }
+            else {
+            }
         }
 
         // set_my_next_id_quality_and_distance(&my_neighbor_table, &my_information);
 #endif
-        print_routing_table(&my_neighbor_table);
+        print_neighbor_table(&my_neighbor_table);
+        print_routing_table(&my_routing_table);
 #if 1
-        if (refresh_flag == true) { // 状态改变，立即发送hello
-            refresh_flag = false;
+        if (refresh_flag_for_neighbor == true) { // 状态改变，立即发送hello
+            refresh_flag_for_neighbor = false;
             memcpy(adv_data_final_for_hello, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
-            esp_ble_gap_config_adv_data_raw(adv_data_final_for_hello, 31);
-            esp_ble_gap_start_advertising(&adv_params);
+            queue_push(&send_queue, adv_data_final_for_hello, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
         }
 #endif
 #if 1
         ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
+        ESP_LOGI(DATA_TAG, "my_id:");
+        esp_log_buffer_hex(DATA_TAG, my_information.my_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "root_id:");
         esp_log_buffer_hex(DATA_TAG, my_information.root_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "is_root:%d", my_information.is_root);
@@ -101,9 +136,7 @@ static void ble_routing_table_task(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(REFRESH_ROUTING_TABLE_TIME));
     }
 }
-#endif // ROUTINGTABLE
 
-#ifdef QUEUE
 static void ble_rec_data_task(void *pvParameters)
 {
     uint8_t *phello = NULL;
@@ -120,47 +153,52 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t anrrep_len = 0;
     uint8_t rerr_len = 0;
     while (1) {
-        if (!queue_is_empty(&rec_queue)) {
-            rec_data = queue_pop(&rec_queue);
-            if (rec_data != NULL) {
-                phello = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_PHELLO, &phello_len);
-                anhsp = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANHSP, &anhsp_len);
-                hsrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_HSRREP, &hsrrep_len);
-                anrreq = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &anrreq_len);
-                anrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &anrrep_len);
-                rerr = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RERR, &rerr_len);
-                // ESP_LOGI(TAG, "ADV_DATA:");
-                // esp_log_buffer_hex(TAG, rec_data, 31);
-                if (phello != NULL) {
-                    resolve_phello(phello, &my_information, temp_rssi);
-                    ESP_LOGI(TAG, "PHELLO_DATA:");
-                    esp_log_buffer_hex(TAG, phello, phello_len);
-                    ESP_LOGE(TAG, "rssi:%d", temp_rssi);
+        if (xSemaphoreTake(xCountingSemaphore_receive, portMAX_DELAY) == pdTRUE) // 得到了信号量
+        {
+            if (!queue_is_empty(&rec_queue)) {
+                rec_data = queue_pop(&rec_queue);
+                if (rec_data != NULL) {
+                    phello = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_PHELLO, &phello_len);
+                    anhsp = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANHSP, &anhsp_len);
+                    hsrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_HSRREP, &hsrrep_len);
+                    anrreq = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &anrreq_len);
+                    anrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &anrrep_len);
+                    rerr = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RERR, &rerr_len);
+                    // ESP_LOGI(TAG, "ADV_DATA:");
+                    // esp_log_buffer_hex(TAG, rec_data, 31);
+                    if (phello != NULL) {
+                        resolve_phello(phello, &my_information, temp_rssi);
+                        ESP_LOGI(TAG, "PHELLO_DATA:");
+                        esp_log_buffer_hex(TAG, phello, phello_len);
+                        ESP_LOGE(TAG, "rssi:%d", temp_rssi);
+                    }
+                    if (anhsp != NULL) {
+                        ESP_LOGE(TAG, "ANHSP_DATA:");
+                        esp_log_buffer_hex(TAG, anhsp, anhsp_len);
+                        resolve_anhsp(anhsp, &my_information);
+                    }
+                    if (hsrrep != NULL) {
+                        ESP_LOGE(TAG, "HSRREP_DATA:");
+                        esp_log_buffer_hex(TAG, hsrrep, hsrrep_len);
+                        resolve_hsrrep(hsrrep, &my_information);
+                    }
+                    if (anrreq != NULL) {
+                        ESP_LOGE(TAG, "ANRREQ_DATA:");
+                        esp_log_buffer_hex(TAG, anrreq, anrreq_len);
+                    }
+                    if (anrrep != NULL) {
+                        ESP_LOGE(TAG, "ANRREP_DATA:");
+                        esp_log_buffer_hex(TAG, anrrep, anrrep_len);
+                    }
+                    if (rerr != NULL) {
+                        ESP_LOGE(TAG, "RERR_DATA:");
+                        esp_log_buffer_hex(TAG, rerr, rerr_len);
+                    }
+                    free(rec_data);
                 }
-                if (anhsp != NULL) {
-                    ESP_LOGI(TAG, "MAIN_QUEST_DATA:");
-                    esp_log_buffer_hex(TAG, anhsp, anhsp_len);
-                }
-                if (hsrrep != NULL) {
-                    ESP_LOGI(TAG, "MAIN_ANSWER_DATA:");
-                    esp_log_buffer_hex(TAG, hsrrep, hsrrep_len);
-                }
-                if (anrreq != NULL) {
-                    ESP_LOGI(TAG, "SECOND_QUEST_DATA:");
-                    esp_log_buffer_hex(TAG, anrreq, anrreq_len);
-                }
-                if (anrrep != NULL) {
-                    ESP_LOGI(TAG, "SECOND_ANSWER_DATA:");
-                    esp_log_buffer_hex(TAG, anrrep, anrrep_len);
-                }
-                if (rerr != NULL) {
-                    ESP_LOGI(TAG, "REPAIR_DATA:");
-                    esp_log_buffer_hex(TAG, rerr, rerr_len);
-                }
-                free(rec_data);
             }
+            // vTaskDelay(pdMS_TO_TICKS(REC_TIME));
         }
-        vTaskDelay(pdMS_TO_TICKS(REC_TIME));
     }
 }
 
@@ -168,12 +206,7 @@ static void ble_send_data_task(void *pvParameters)
 {
     uint8_t *send_data = NULL;
     while (1) {
-
-        memcpy(adv_data_final_for_hello, data_match(adv_data_name_7, generate_phello(&my_information), HEAD_DATA_LEN, PHELLO_FINAL_DATA_LEN), FINAL_DATA_LEN);
-        queue_push(&send_queue, adv_data_final_for_hello, 0);
-        // queue_push(&send_queue, adv_data_final, 0);
-        //  queue_push(&send_queue, adv_data_final);
-
+#if 0
         if (!queue_is_empty(&send_queue)) {
             send_data = queue_pop(&send_queue);
             if (send_data != NULL) {
@@ -183,9 +216,21 @@ static void ble_send_data_task(void *pvParameters)
             }
         }
         vTaskDelay(pdMS_TO_TICKS(ADV_TIME));
+#else
+        if (xSemaphoreTake(xCountingSemaphore_send, portMAX_DELAY) == pdTRUE) // 得到了信号量
+        {
+            if (!queue_is_empty(&send_queue)) {
+                send_data = queue_pop(&send_queue);
+                if (send_data != NULL) {
+                    esp_ble_gap_config_adv_data_raw(send_data, 31);
+                    esp_ble_gap_start_advertising(&adv_params);
+                    free(send_data);
+                }
+            }
+        }
+#endif
     }
 }
-#endif // QUEUE
 
 #ifdef THROUGHPUT
 /**
@@ -230,6 +275,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 {
     uint8_t *adv_name = NULL;
     uint8_t adv_name_len = 0;
+    bool is_filtered = false;
 #ifdef THROUGHPUT
     uint32_t bit_rate = 0;
 #endif // THROUGHPUT
@@ -315,7 +361,17 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
-                    queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv, scan_result->scan_rst.rssi);
+                    if (memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                        memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                        is_filtered = true;
+                    }
+                    if (is_filtered) {
+                        is_filtered = false;
+                    }
+                    else {
+                        queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv, scan_result->scan_rst.rssi);
+                        xSemaphoreGive(xCountingSemaphore_receive);
+                    }
                     // queue_print(&rec_queue);
 #endif // ndef THROUGHPUT
 
@@ -341,9 +397,11 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 static void routing_table_init(void)
 {
     uint8_t my_mac[6];
-    init_routing_table(&my_neighbor_table);
+    init_neighbor_table(&my_neighbor_table);
     esp_read_mac(my_mac, ESP_MAC_BT);
     my_info_init(&my_information, my_mac);
+
+    init_routing_table(&my_routing_table);
 }
 #endif // ROUTINGTABLE
 
@@ -359,10 +417,6 @@ static void all_queue_init(void)
 #if 1
 void button_ops()
 {
-    uint8_t mac_test[] = {
-        0xfc, 0xb4, 0x67, 0x50, 0xeb, 0x36};
-    remove_routing_node(&my_neighbor_table, mac_test);
-    print_routing_table(&my_neighbor_table);
 }
 #else
 void button_ops()
@@ -402,12 +456,14 @@ static void esp_gpio_init(void)
 void app_main(void)
 {
     esp_err_t ret;
+#if 0
     // 初始化调度锁
     xMutex1 = xSemaphoreCreateMutex();
     if (xMutex1 == NULL) {
         ESP_LOGE(TAG, "semaphore create error");
         return;
     }
+#endif
 #if 0
     xMutex2 = xSemaphoreCreateMutex();
     if (xMutex2 == NULL) {
@@ -461,19 +517,18 @@ void app_main(void)
 #ifdef QUEUE
     all_queue_init();
 #endif // QUEUE
-       //  初始广播数据
-       //     data_match(adv_data_name, adv_data_ff1);
-       // esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
+
+    xCountingSemaphore_send = xSemaphoreCreateCounting(200, 0);
+    xCountingSemaphore_receive = xSemaphoreCreateCounting(200, 0);
+
     esp_ble_gap_set_scan_params(&ble_scan_params);
     esp_ble_gap_start_scanning(duration);
     // esp_ble_gap_start_advertising(&adv_params);
-// xTaskCreate(switch_adv_data_task, "switch_adv_data_task", 4096, NULL, 5, NULL);
-//  xTaskCreate(gpio_task, "gpio_task", 4096, NULL, 5, NULL);
-#ifdef QUEUE
+
+    xTaskCreate(hello_task, "hello_task", 1024, NULL, 2, NULL);
     xTaskCreate(ble_routing_table_task, "ble_routing_table_task", 4096, NULL, 5, NULL);
-    xTaskCreate(ble_send_data_task, "ble_send_data_task", 4096, NULL, 5, NULL);
-    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 5, NULL);
-#endif // QUEUE
+    xTaskCreate(ble_send_data_task, "ble_send_data_task", 2048, NULL, 3, NULL);
+    xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 4, NULL);
 #ifdef BUTTON
     board_init();
 #endif // BUTTION
