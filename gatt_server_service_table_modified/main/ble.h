@@ -1,11 +1,20 @@
 /*
+ * @Author: Zhenwei Song zhenwei.song@qq.com
+ * @Date: 2023-12-05 17:18:06
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2023-12-05 17:19:14
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.h
+ * @Description: 仅供学习交流使用
+ * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
+ */
+/*
  * SPDX-FileCopyrightText: 2021 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Unlicense OR CC0-1.0
  */
 
 // #define GPIO //GPIO相关
-// #define THROUGHPUT//吞吐量测试
+ //#define THROUGHPUT//吞吐量测试
 #define ROUTINGTABLE // 路由表（链表）
 #define QUEUE        // 发送、接收队列
 #define BUTTON       // 按键

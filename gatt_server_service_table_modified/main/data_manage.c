@@ -1,14 +1,15 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-24 15:56:44
- * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.c
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-16 16:01:25
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
 #include "data_manage.h"
 #include "ble_queue.h"
+#include "ble_timer.h"
 #include "esp_gap_ble_api.h"
 #include "neighbor_table.h"
 #include "routing_table.h"
@@ -355,16 +356,17 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
     /* -------------------------------------------------------------------------- */
     /*                                  开始转发到root                                 */
     /* -------------------------------------------------------------------------- */
-    if (info->is_root) { // 根节点 回复hsrrep
-        insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);
-        memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(info, temp_info->source_id), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+    if (info->is_root) {                                                                                                                                                   // 根节点 回复hsrrep
+        insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);                                          // 把它加入到自己的路由表里
+        memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(info, temp_info->source_id), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN); // 发送入网请求的节点成了根节点发送入网请求回复包的目的节点
         queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
         xSemaphoreGive(xCountingSemaphore_send);
         ESP_LOGE(DATA_TAG, "response hsrrep");
     }
     else {
-        if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) { // 由自己中转，开始转发
-            insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);
+        if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {                                             // 由自己中转，开始转发
+            insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1); // 把它加入到自己的路由表里，自己成了它的父节点（父节点的选择由子节点根据链路质量确定）
+            // TODO:未考虑路由表的维护
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_transfer_anhsp(temp_info, info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
             xSemaphoreGive(xCountingSemaphore_send);
@@ -451,13 +453,18 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
     memcpy(temp_info->reverse_next_id, temp + 8, ID_LEN);
     temp_info->distance = hsrrep_data[1];
+
     if (memcmp(temp_info->reverse_next_id, info->my_id, ID_LEN) == 0) {
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
-            info->is_connected |= true;                                    // TODO:1.未加入等待时间   2.未收到的情况待写
-            info->distance = temp_info->distance + 1;
-            ESP_LOGE(DATA_TAG, "receive hsrrep");
+            if (timer1_timeout == false) {                                 // 不处理超时后收到的hsrrep
+                esp_timer_stop(ble_time1_timer);                           // 定时停止
+                timer1_timeout = false;
+                info->is_connected |= true;
+                info->distance = temp_info->distance + 1;
+                ESP_LOGE(DATA_TAG, "receive hsrrep");
+            }
         }
-        else {                                // 不是发给我的hsrrep
+        else {                                // 不是发给我的hsrrep（但是我是入网请求节点和根节点入网路径上的节点）
             if (info->is_connected == true) { // 由入网的节点转发
                 // insert_routing_node(&my_routing_table, info->root_id, temp_info->destination_id, temp_info->node_id, temp_info->distance + 1);
                 memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
@@ -497,7 +504,7 @@ uint8_t *generate_anrreq(p_my_info info)
 }
 
 /**
- * @description: 在阈值下部区域时，发送的入网请求包（解析）
+ * @description: 在阈值下部区域时，发送的入网请求包（解析   由邻居节点解析）
  * @param {uint8_t} *anrreq_data
  * @param {p_my_info} info
  * @return {*}
@@ -510,4 +517,64 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info)
     memcpy(temp_info->quality_threshold, temp, THRESHOLD_LEN);
     memcpy(temp_info->source_id, temp + 2, ID_LEN);
     // TODO:序列号
+    if (info->is_connected == true) {                                                // 我是入网节点
+        if (memcmp(info->quality, temp_info->quality_threshold, QUALITY_LEN) >= 0) { // 我满足阈值要求，我回复入网请求回复包
+            memcpy(adv_data_final_for_anrrep, data_match(adv_data_name_7, generate_anrrep(info, temp_info->source_id), HEAD_DATA_LEN, ANRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_anrrep, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+            ESP_LOGE(DATA_TAG, "send anrrep");
+        }
+    }
+}
+
+/**
+ * @description:入网请求回复包（阈值下，由邻居中入网节点发送）
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id)
+{
+    uint8_t anrrep[ANRREP_DATA_LEN] = {0};
+    uint8_t temp_node_id[ID_LEN];
+    uint8_t temp_des_id[ID_LEN];
+    memcpy(temp_node_id, info->my_id, ID_LEN);
+    memcpy(temp_des_id, des_id, ID_LEN);
+    // TODO:序列号
+    anrrep[0] |= info->distance;  // 距离
+    anrrep[4] |= temp_node_id[0]; // my ID
+    anrrep[5] |= temp_node_id[1];
+    anrrep[6] |= temp_des_id[0]; // 发送入网请求包的节点
+    anrrep[7] |= temp_des_id[1];
+
+    memcpy(anrrep_final + 2, anrrep, ANRREP_DATA_LEN);
+    return anrrep_final;
+}
+
+/**
+ * @description:解析由邻居节点发来的入网请求回复包（阈值下区域）
+ * @param {uint8_t} *anrrep_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
+void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
+{
+    p_anrrep_info temp_info = (p_anrrep_info)malloc(sizeof(anrrep_info));
+    uint8_t temp[ANRREP_DATA_LEN];
+    memcpy(temp, anrrep_data, ANRREP_DATA_LEN);
+    temp_info->distance = temp[0];
+    memcpy(temp_info->node_id, temp + 4, ID_LEN);
+    memcpy(temp_info->destination_id, temp + 6, ID_LEN);
+    // TODO:序列号
+    if (memcmp(info->my_id, temp_info->destination_id, ID_LEN) == 0 && memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是发回给我的入网请求回复包,且是我认定的父节点（low_ops中根据链路质量最优选择的）
+        if (timer2_timeout == false) {                                                                                           // 不处理超时后收到的anrrep
+            esp_timer_stop(ble_time2_timer);                                                                                     // 定时停止
+            timer2_timeout = false;
+            ESP_LOGE(DATA_TAG, "receive anrrep"); // 收到anrrep，开始向root发送入网请求
+            memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_anhsp, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+            // 开始计时
+            esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
+        }
+    }
 }

@@ -1,9 +1,9 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-12-04 20:23:13
- * @FilePath: \esp32\gatt_server_service_table_modified\main\data_manage.h
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-16 19:50:06
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -29,6 +29,9 @@
 #define NOR_NODE_INIT_QUALITY 0
 #define NOR_NODE_INIT_DISTANCE 100
 
+#define WAIT_TIME_1 5
+#define WAIT_TIME_2 10
+
 #define ID_LEN 2
 #define QUALITY_LEN 2
 #define THRESHOLD_LEN 2
@@ -38,7 +41,7 @@
 #define FINAL_DATA_LEN 31
 
 #define THRESHOLD_HIGH 100
-#define THRESHOLD_LOW 1
+#define THRESHOLD_LOW 90
 
 #define PHELLO_FINAL_DATA_LEN 18
 #define PHELLO_DATA_LEN PHELLO_FINAL_DATA_LEN - 2
@@ -134,6 +137,8 @@ extern uint8_t temp_data_31[FINAL_DATA_LEN];
 extern uint8_t adv_data_final_for_hello[FINAL_DATA_LEN];
 
 extern uint8_t adv_data_final_for_anhsp[FINAL_DATA_LEN];
+
+extern uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN];
 // 31字节数据
 extern uint8_t adv_data_31[31];
 
@@ -160,4 +165,12 @@ uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id);
 uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info);
 
 void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info);
+
+uint8_t *generate_anrreq(p_my_info info);
+
+void resolve_anrreq(uint8_t *anrreq_data, p_my_info info);
+
+uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id);
+
+void resolve_anrrep(uint8_t *anrrep_data, p_my_info info);
 #endif // _DATA_H_

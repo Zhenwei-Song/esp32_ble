@@ -1,11 +1,10 @@
 /*
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-12-05 11:21:34
- * @FilePath: \esp32\gatt_server_service_table_modified\main\ble.c
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-16 19:42:36
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
- * 该代码用于接收测试（循环发送01到0f的包）
  * 实现了广播与扫描同时进行（基于gap层）
  * 添加了GPIO的测试内容（由宏定义控制是否启动）
  * 实现了基于adtype中name的判断接收包的方法
@@ -14,6 +13,7 @@
  * 添加了rssi
  * 添加了发送和接收消息队列，用单独的task进行处理
  * 添加了路由表，添加了路由表的刷新机制
+ * 使用信号来控制发送和数据处理
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
 
@@ -35,6 +35,8 @@
 #endif
 
 #include "data_manage.h"
+
+#include "ble_timer.h"
 // 181 B5
 // 10  0A
 
@@ -46,6 +48,10 @@
 
 // 119 77(ROOT)
 // 74 4A
+
+#define FILTER
+
+#ifdef FILTER
 #define FILTERED_ID_H 119
 #define FILTERED_ID_L 75
 static uint8_t filtered_id[ID_LEN] = {FILTERED_ID_H, FILTERED_ID_L};
@@ -53,11 +59,14 @@ static uint8_t filtered_id_774a[ID_LEN] = {119, 74};
 static uint8_t filtered_id_cae6[ID_LEN] = {202, 230};
 static uint8_t filtered_id_eb36[ID_LEN] = {235, 54};
 static uint8_t filtered_id_b50a[ID_LEN] = {181, 10};
+#endif // FILTER
 
 #define REFRESH_ROUTING_TABLE_TIME 1000
-#define ADV_TIME 1000
-#define REC_TIME 50
-#define HELLO_TIME 2000
+#define ADV_TIME 200
+#define REC_TIME 100
+#define HELLO_TIME 1000
+#define RESET_TIMER1_TIMEOUT_TIME 1000
+#define RESET_TIMER2_TIMEOUT_TIME 1000
 
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
@@ -91,7 +100,7 @@ static void ble_routing_table_task(void *pvParameters)
     while (1) {
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
-        update_quality_of_neighbor_table(&my_neighbor_table);
+        update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
         if (my_information.is_connected == false) {
             if (threshold_high_flag == true) {
                 ESP_LOGE(DATA_TAG, "threshold_high_flag");
@@ -102,6 +111,8 @@ static void ble_routing_table_task(void *pvParameters)
                 threshold_between_ops(&my_neighbor_table, &my_information);
             }
             else {
+                ESP_LOGE(DATA_TAG, "threshold_low_flag");
+                threshold_low_ops(&my_neighbor_table, &my_information);
             }
         }
 
@@ -185,10 +196,12 @@ static void ble_rec_data_task(void *pvParameters)
                     if (anrreq != NULL) {
                         ESP_LOGE(TAG, "ANRREQ_DATA:");
                         esp_log_buffer_hex(TAG, anrreq, anrreq_len);
+                        resolve_anrreq(anrreq, &my_information);
                     }
                     if (anrrep != NULL) {
                         ESP_LOGE(TAG, "ANRREP_DATA:");
                         esp_log_buffer_hex(TAG, anrrep, anrrep_len);
+                        resolve_anrrep(anrrep, &my_information);
                     }
                     if (rerr != NULL) {
                         ESP_LOGE(TAG, "RERR_DATA:");
@@ -229,6 +242,27 @@ static void ble_send_data_task(void *pvParameters)
             }
         }
 #endif
+    }
+}
+
+static void ble_timer_check_task(void *pvParameters)
+{
+    while (1) {
+        if (xSemaphoreTake(xCountingSemaphore_timeout1, portMAX_DELAY) == pdTRUE) // 得到了信号量
+        {
+            memcpy(adv_data_final_for_anrreq, data_match(adv_data_name_7, generate_anrreq(&my_information), HEAD_DATA_LEN, ANRREQ_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_anrreq, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+            // 开始计时
+            esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
+            vTaskDelay(pdMS_TO_TICKS(RESET_TIMER1_TIMEOUT_TIME));
+            timer1_timeout = false;
+        }
+        if (xSemaphoreTake(xCountingSemaphore_timeout2, portMAX_DELAY) == pdTRUE) // 得到了信号量
+        {
+            vTaskDelay(pdMS_TO_TICKS(RESET_TIMER2_TIMEOUT_TIME));
+            timer2_timeout = false;
+        }
     }
 }
 
@@ -361,9 +395,28 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
 #ifndef THROUGHPUT
                     ESP_LOGW(TAG, "%s is found", remote_device_name);
-                    if (memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0 ||
-                        memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
-                        is_filtered = true;
+#ifdef FILTER
+                    if (memcmp(my_information.my_id, filtered_id_b50a, 2) == 0) {
+                        if (memcmp(filtered_id_eb36, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                            memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                            is_filtered = true;
+                        }
+                    }
+                    else if (memcmp(my_information.my_id, filtered_id_cae6, 2) == 0) {
+                        if (memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                            is_filtered = true;
+                        }
+                    }
+                    else if (memcmp(my_information.my_id, filtered_id_eb36, 2) == 0) {
+                        if (memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                            is_filtered = true;
+                        }
+                    }
+                    else if (memcmp(my_information.my_id, filtered_id_774a, 2) == 0) {
+                        if (memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                            memcmp(filtered_id_cae6, scan_result->scan_rst.bda + 4, 2) == 0) {
+                            is_filtered = true;
+                        }
                     }
                     if (is_filtered) {
                         is_filtered = false;
@@ -372,7 +425,11 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                         queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv, scan_result->scan_rst.rssi);
                         xSemaphoreGive(xCountingSemaphore_receive);
                     }
-                    // queue_print(&rec_queue);
+#else
+                    queue_push_with_check(&rec_queue, scan_result->scan_rst.ble_adv, scan_result->scan_rst.rssi);
+                    xSemaphoreGive(xCountingSemaphore_receive);
+#endif // FILTER
+       //  queue_print(&rec_queue);
 #endif // ndef THROUGHPUT
 
 #ifdef GPIO
@@ -520,6 +577,8 @@ void app_main(void)
 
     xCountingSemaphore_send = xSemaphoreCreateCounting(200, 0);
     xCountingSemaphore_receive = xSemaphoreCreateCounting(200, 0);
+    xCountingSemaphore_timeout1 = xSemaphoreCreateCounting(200, 0);
+    xCountingSemaphore_timeout2 = xSemaphoreCreateCounting(200, 0);
 
     esp_ble_gap_set_scan_params(&ble_scan_params);
     esp_ble_gap_start_scanning(duration);
@@ -529,6 +588,11 @@ void app_main(void)
     xTaskCreate(ble_routing_table_task, "ble_routing_table_task", 4096, NULL, 5, NULL);
     xTaskCreate(ble_send_data_task, "ble_send_data_task", 2048, NULL, 3, NULL);
     xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 4, NULL);
+#ifdef BLE_TIMER
+    xTaskCreate(ble_timer_check_task, "ble_timer_check_task", 1024, NULL, 4, NULL);
+    ble_timer_init();
+#endif
+
 #ifdef BUTTON
     board_init();
 #endif // BUTTION

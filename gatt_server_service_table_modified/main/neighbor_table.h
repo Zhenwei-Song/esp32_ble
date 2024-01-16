@@ -68,11 +68,13 @@ uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id);
 
 void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info);
 
-void update_quality_of_neighbor_table(p_neighbor_table table);
+void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info);
 
 void threshold_high_ops(p_neighbor_table table, p_my_info info);
 
 void threshold_between_ops(p_neighbor_table table, p_my_info info);
+
+void threshold_low_ops(p_neighbor_table table, p_my_info info);
 
 void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info);
 

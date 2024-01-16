@@ -1,9 +1,9 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-12-04 20:19:31
- * @FilePath: \esp32\gatt_server_service_table_modified\main\neighbor_table.c
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-16 19:21:04
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -11,6 +11,7 @@
 #include "esp_log.h"
 
 #include "ble_queue.h"
+#include "ble_timer.h"
 #include "neighbor_table.h"
 
 bool refresh_flag_for_neighbor = false;
@@ -262,43 +263,6 @@ uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id)
     }
 }
 
-#if 0
-/**
- * @description: 更新路由表的计数号（-1）
- * @param {p_neighbor_table} table
- * @return {*}
- */
-void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
-{
-    if (table->head != NULL) {
-        p_neighbor_note temp = table->head;
-        while (temp != NULL) {
-            if (temp->count == 0) {
-                if (temp->is_root == true) { // 若表中的root节点无了，更新自己info
-                    info->update = info->update + 1;
-                    info->is_connected = false;
-                    info->distance = 100;
-                    memset(info->root_id, 0, ID_LEN);
-                    memset(info->next_id, 0, ID_LEN);
-                    refresh_flag_for_neighbor = true;
-                    ESP_LOGE(NEIGHBOR_TAG, "root deleted");
-                }
-                p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
-                remove_neighbor_node_from_node(table, temp);
-                temp = next_temp; // 更新temp为下一个节点
-                ESP_LOGW(NEIGHBOR_TAG, "neighbor table node deleted");
-            }
-            else {
-                temp->count = temp->count - 1;
-                temp = temp->next; // 继续到下一个节点
-                // ESP_LOGW(NEIGHBOR_TAG, "neighbor table refreshed");
-            }
-        }
-        // update_my_connection_info(table, info);
-        print_neighbor_table(table);
-    }
-}
-#else
 /**
  * @description: 更新路由表的计数号（-1）
  * @param {p_neighbor_table} table
@@ -347,17 +311,20 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
 #endif
     }
 }
-#endif
 
-void update_quality_of_neighbor_table(p_neighbor_table table)
+void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info)
 {
-
+    threshold_high_flag = 0;
+    threshold_low_flag = 0;
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
             if (temp->is_connected == true) { // 若为入网节点
                 memcpy(temp->quality_from_me, quality_calculate(temp->rssi, temp->quality, temp->distance), QUALITY_LEN);
-                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0 && temp->is_root == true) { // 大于阈值1，且为root
+                if (memcmp(temp->id, info->next_id, ID_LEN) == 0) { // 更新自己到父节点的链路质量
+                    memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                }
+                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1
                     threshold_high_flag |= 1;
                     threshold_low_flag |= 0;
                 }
@@ -462,27 +429,29 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
         queue_push(&send_queue, adv_data_final_for_anhsp, 0);
         xSemaphoreGive(xCountingSemaphore_send);
+#ifdef BLE_TIMER
+        // 开始计时
+        esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
+#endif
         // print_neighbor_table(table);
     }
 }
 
-#if 0
 void threshold_low_ops(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
-            if (temp->is_connected == true) {                                                                                                           // 若为入网节点
-                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP
-
-                    if (memcmp(info->next_id, temp->id, ID_LEN) == 0) { // 若它就是自己的next id，则更新自己的链路质量
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
-                    }
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) > 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {              // 更新自己的next_id
-                            memcpy(info->next_id, temp->id, ID_LEN);
+            if (temp->is_connected == true) {                                            // 若为入网节点
+                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) < 0) {     // 小于阈值2，发送ANRREQ
+                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                         }
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        else { // 更新自己的next_id
+                            memcpy(info->next_id, temp->id, ID_LEN);
+                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        }
                     }
                 }
             }
@@ -491,12 +460,17 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
         /* -------------------------------------------------------------------------- */
         /*                               向next_id发送入网请求包                              */
         /* -------------------------------------------------------------------------- */
-        memcpy(adv_data_final_for_anrreq, data_match(adv_data_name_7, generate_anrreq(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
-        queue_push(&send_queue, adv_data_final_for_anhsp, 0);
+        memcpy(adv_data_final_for_anrreq, data_match(adv_data_name_7, generate_anrreq(info), HEAD_DATA_LEN, ANRREQ_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final_for_anrreq, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
+#ifdef BLE_TIMER
+        // 开始计时
+        esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
+#endif
         // print_neighbor_table(table);
     }
 }
-#endif
+
 void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
