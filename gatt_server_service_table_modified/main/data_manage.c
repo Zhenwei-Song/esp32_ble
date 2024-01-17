@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-16 16:01:25
+ * @LastEditTime: 2024-01-17 15:26:33
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -33,6 +33,8 @@ uint8_t anrreq_final[ANRREQ_FINAL_DATA_LEN] = {ANRREQ_FINAL_DATA_LEN - 1, ESP_BL
 
 uint8_t anrrep_final[ANRREP_FINAL_DATA_LEN] = {ANRREP_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_ANRREP};
 
+uint8_t rrer_final[RRER_FINAL_DATA_LEN] = {RRER_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_RRER};
+
 uint8_t temp_quality_of_mine[QUALITY_LEN] = {0};
 
 uint8_t temp_data_31[FINAL_DATA_LEN] = {0};
@@ -42,6 +44,7 @@ uint8_t adv_data_final_for_anhsp[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_hsrrep[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_anrrep[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_rrer[FINAL_DATA_LEN] = {0};
 
 uint8_t adv_data_name_7[HEAD_DATA_LEN] = {
     HEAD_DATA_LEN - 1, ESP_BLE_AD_TYPE_NAME_CMPL, 'O', 'L', 'T', 'H', 'R'};
@@ -567,7 +570,7 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
     // TODO:序列号
     if (memcmp(info->my_id, temp_info->destination_id, ID_LEN) == 0 && memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是发回给我的入网请求回复包,且是我认定的父节点（low_ops中根据链路质量最优选择的）
-        if (timer2_running == true) {                                                                                           // 不处理超时后收到的anrrep
+        if (timer2_running == true) {                                                                                            // 不处理超时后收到的anrrep
             esp_timer_stop(ble_time2_timer);
             timer2_running = false; // 定时停止
             timer2_timeout = false;
@@ -579,5 +582,54 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
             esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
             timer1_running = true;
         }
+    }
+}
+
+/**
+ * @description: 路由错误包
+ * @param {p_my_info} info
+ * @return {*}
+ */
+uint8_t *generate_rrer(p_my_info info)
+{
+    uint8_t rrer[RRER_DATA_LEN] = {0};
+    uint8_t temp_node_id[ID_LEN];
+    uint8_t temp_des_id[ID_LEN];
+    memcpy(temp_node_id, info->my_id, ID_LEN);
+    memcpy(temp_des_id, info->root_id, ID_LEN);
+    rrer[2] |= temp_node_id[0]; // my ID
+    rrer[3] |= temp_node_id[1];
+    rrer[4] |= temp_des_id[0];
+    rrer[5] |= temp_des_id[1];
+    memcpy(rrer_final + 2, rrer, RRER_DATA_LEN);
+    return rrer_final;
+}
+
+/**
+ * @description: 解析路由错误包
+ * @param {uint8_t} *rrer_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
+void resolve_rrer(uint8_t *rrer_data, p_my_info info)
+{
+    p_rrer_info temp_info = (p_rrer_info)malloc(sizeof(rrer_info));
+    uint8_t temp[RRER_DATA_LEN];
+    memcpy(temp, rrer_data, RRER_DATA_LEN);
+    memcpy(temp_info->node_id, temp + 2, ID_LEN);
+    memcpy(temp_info->destination_id, temp + 4, ID_LEN);
+    if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
+        ESP_LOGE(DATA_TAG, "receive rrer");
+        info->is_connected = false;
+        info->distance = NOR_NODE_INIT_DISTANCE;
+        info->quality[0] = NOR_NODE_INIT_QUALITY;
+        memset(info->root_id, 0, ID_LEN);
+        memset(info->next_id, 0, ID_LEN);
+        memcpy(adv_data_final_for_rrer, data_match(adv_data_name_7, generate_rrer(info), HEAD_DATA_LEN, RRER_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final_for_rrer, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
+        // 开始计时
+        esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
+        timer3_running = true;
     }
 }

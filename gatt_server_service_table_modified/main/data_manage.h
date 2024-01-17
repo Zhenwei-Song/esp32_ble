@@ -58,6 +58,9 @@
 #define ANRREP_FINAL_DATA_LEN 14
 #define ANRREP_DATA_LEN ANRREP_FINAL_DATA_LEN - 2
 
+#define RRER_FINAL_DATA_LEN 10
+#define RRER_DATA_LEN RRER_FINAL_DATA_LEN - 2
+
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
 
@@ -120,6 +123,11 @@ typedef struct anrrep_info {
     uint8_t serial_number[SERIAL_NUM_LEN];
 } anrrep_info, *p_anrrep_info;
 
+typedef struct rrer_info {
+    uint8_t node_id[ID_LEN];
+    uint8_t destination_id[ID_LEN];
+} rrer_info, *p_rrer_info;
+
 extern my_info my_information;
 
 extern uint8_t threshold_high[QUALITY_LEN];
@@ -139,6 +147,8 @@ extern uint8_t adv_data_final_for_hello[FINAL_DATA_LEN];
 extern uint8_t adv_data_final_for_anhsp[FINAL_DATA_LEN];
 
 extern uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN];
+
+extern uint8_t adv_data_final_for_rrer[FINAL_DATA_LEN];
 // 31字节数据
 extern uint8_t adv_data_31[31];
 
@@ -173,4 +183,8 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info);
 uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id);
 
 void resolve_anrrep(uint8_t *anrrep_data, p_my_info info);
+
+uint8_t *generate_rrer(p_my_info info);
+
+void resolve_rrer(uint8_t *rrer_data, p_my_info info);
 #endif // _DATA_H_

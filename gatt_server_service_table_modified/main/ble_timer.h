@@ -19,25 +19,30 @@
 
 #define BLE_TIMER
 
-#define TIME1_TIMER_PERIOD 5000000 // 10S
-#define TIME2_TIMER_PERIOD 5000000 // 20S
+#define TIME1_TIMER_PERIOD 5000000
+#define TIME2_TIMER_PERIOD 5000000
+#define TIME3_TIMER_PERIOD 2000000 //2 seconds
 
 extern SemaphoreHandle_t xCountingSemaphore_timeout1;
 extern SemaphoreHandle_t xCountingSemaphore_timeout2;
 
 extern esp_timer_handle_t ble_time1_timer;
 extern esp_timer_handle_t ble_time2_timer;
+extern esp_timer_handle_t ble_time3_timer;
 
 extern bool timer1_timeout;
 extern bool timer2_timeout;
 
 extern bool timer1_running;
 extern bool timer2_running;
+extern bool timer3_running;
 
 void ble_timer_init(void);
 
 void time1_timer_cb(void);
 
 void time2_timer_cb(void);
+
+void time3_timer_cb(void);
 
 #endif

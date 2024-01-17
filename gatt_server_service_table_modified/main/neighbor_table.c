@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 09:44:59
+ * @LastEditTime: 2024-01-17 15:33:35
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -284,16 +284,22 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
         while (temp != NULL) {
             if (temp->count == 0) {
 #ifndef SELF_ROOT
-                if (temp->id == info->next_id) { // 若自己的父节点无了，更新自己info
+                if (memcmp(temp->id, info->next_id, ID_LEN) == 0) { // 若自己的父节点无了，更新自己info
                     // info->update = info->update + 1;
                     info->is_connected = false;
-                    info->distance = 100;
+                    info->distance = NOR_NODE_INIT_DISTANCE;
                     info->quality[0] = NOR_NODE_INIT_QUALITY;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
-                    refresh_flag_for_neighbor = true;
-                    // update_my_connection_info(table, info);
-                    ESP_LOGE(NEIGHBOR_TAG, "father deleted");
+                    // refresh_flag_for_neighbor = true;
+                    //  update_my_connection_info(table, info);
+                    ESP_LOGE(NEIGHBOR_TAG, "father deleted"); // 自己的父节点无了，发送rrer
+                    memcpy(adv_data_final_for_rrer, data_match(adv_data_name_7, generate_rrer(info), HEAD_DATA_LEN, RRER_FINAL_DATA_LEN), FINAL_DATA_LEN);
+                    queue_push(&send_queue, adv_data_final_for_rrer, 0);
+                    xSemaphoreGive(xCountingSemaphore_send);
+                    // 开始计时
+                    esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
+                    timer3_running = true;
                 }
 #endif
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
@@ -309,14 +315,14 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
         }
         // print_neighbor_table(table);
     }
-    else { // 路由表里一个节点都没有
+    else { // 路由表里一个节点都没有,但是不是因为自己的父节点断开
 #ifndef SELF_ROOT
         info->is_connected = false;
         info->distance = 100;
         info->quality[0] = NOR_NODE_INIT_QUALITY;
         memset(info->root_id, 0, ID_LEN);
         memset(info->next_id, 0, ID_LEN);
-        refresh_flag_for_neighbor = true;
+        // refresh_flag_for_neighbor = true;
 #endif
     }
 }

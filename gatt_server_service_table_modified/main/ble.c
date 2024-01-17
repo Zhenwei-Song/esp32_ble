@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 11:05:15
+ * @LastEditTime: 2024-01-17 15:29:01
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -64,7 +64,7 @@ static uint8_t filtered_id_b50a[ID_LEN] = {181, 10};
 #define REFRESH_ROUTING_TABLE_TIME 1000
 #define ADV_TIME 200
 #define REC_TIME 100
-#define HELLO_TIME 1000
+#define HELLO_TIME 3000
 #define RESET_TIMER1_TIMEOUT_TIME 1000
 #define RESET_TIMER2_TIMEOUT_TIME 1000
 
@@ -101,23 +101,25 @@ static void ble_routing_table_task(void *pvParameters)
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
         update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
-        if (my_information.is_connected == false) {
-            if (threshold_high_flag == true) {
-                ESP_LOGE(DATA_TAG, "threshold_high_flag");
-                threshold_high_ops(&my_neighbor_table, &my_information);
-            }
-            else if (threshold_low_flag == true) {
-                ESP_LOGE(DATA_TAG, "threshold_between_flag");
-                if (timer1_running == false) {
-                    ESP_LOGE(DATA_TAG, "threshold_between_ops");
-                    threshold_between_ops(&my_neighbor_table, &my_information);
+        if (timer3_running == false) { // 路由错误后等待一段时间后才进行路由发现
+            if (my_information.is_connected == false) {
+                if (threshold_high_flag == true) {
+                    ESP_LOGE(DATA_TAG, "threshold_high_flag");
+                    threshold_high_ops(&my_neighbor_table, &my_information);
                 }
-            }
-            else {
-                ESP_LOGE(DATA_TAG, "threshold_low_flag");
-                if (timer2_running == false) {
-                    ESP_LOGE(DATA_TAG, "threshold_low_ops");
-                    threshold_low_ops(&my_neighbor_table, &my_information);
+                else if (threshold_low_flag == true) {
+                    ESP_LOGE(DATA_TAG, "threshold_between_flag");
+                    if (timer1_running == false) {
+                        ESP_LOGE(DATA_TAG, "threshold_between_ops");
+                        threshold_between_ops(&my_neighbor_table, &my_information);
+                    }
+                }
+                else {
+                    ESP_LOGE(DATA_TAG, "threshold_low_flag");
+                    if (timer2_running == false) {
+                        ESP_LOGE(DATA_TAG, "threshold_low_ops");
+                        threshold_low_ops(&my_neighbor_table, &my_information);
+                    }
                 }
             }
         }
@@ -161,14 +163,14 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t *hsrrep = NULL;
     uint8_t *anrreq = NULL;
     uint8_t *anrrep = NULL;
-    uint8_t *rerr = NULL;
+    uint8_t *rrer = NULL;
     uint8_t *rec_data = NULL;
     uint8_t phello_len = 0;
     uint8_t anhsp_len = 0;
     uint8_t hsrrep_len = 0;
     uint8_t anrreq_len = 0;
     uint8_t anrrep_len = 0;
-    uint8_t rerr_len = 0;
+    uint8_t rrer_len = 0;
     while (1) {
         if (xSemaphoreTake(xCountingSemaphore_receive, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
@@ -180,7 +182,7 @@ static void ble_rec_data_task(void *pvParameters)
                     hsrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_HSRREP, &hsrrep_len);
                     anrreq = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &anrreq_len);
                     anrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &anrrep_len);
-                    rerr = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RERR, &rerr_len);
+                    rrer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RRER, &rrer_len);
                     // ESP_LOGI(TAG, "ADV_DATA:");
                     // esp_log_buffer_hex(TAG, rec_data, 31);
                     if (phello != NULL) {
@@ -209,9 +211,10 @@ static void ble_rec_data_task(void *pvParameters)
                         esp_log_buffer_hex(TAG, anrrep, anrrep_len);
                         resolve_anrrep(anrrep, &my_information);
                     }
-                    if (rerr != NULL) {
-                        ESP_LOGE(TAG, "RERR_DATA:");
-                        esp_log_buffer_hex(TAG, rerr, rerr_len);
+                    if (rrer != NULL) {
+                        ESP_LOGE(TAG, "RRER_DATA:");
+                        esp_log_buffer_hex(TAG, rrer, rrer_len);
+                        resolve_rrer(rrer, &my_information);
                     }
                     free(rec_data);
                 }
