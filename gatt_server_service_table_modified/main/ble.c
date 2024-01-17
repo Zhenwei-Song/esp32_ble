@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-16 19:42:36
+ * @LastEditTime: 2024-01-17 11:05:15
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -108,11 +108,17 @@ static void ble_routing_table_task(void *pvParameters)
             }
             else if (threshold_low_flag == true) {
                 ESP_LOGE(DATA_TAG, "threshold_between_flag");
-                threshold_between_ops(&my_neighbor_table, &my_information);
+                if (timer1_running == false) {
+                    ESP_LOGE(DATA_TAG, "threshold_between_ops");
+                    threshold_between_ops(&my_neighbor_table, &my_information);
+                }
             }
             else {
                 ESP_LOGE(DATA_TAG, "threshold_low_flag");
-                threshold_low_ops(&my_neighbor_table, &my_information);
+                if (timer2_running == false) {
+                    ESP_LOGE(DATA_TAG, "threshold_low_ops");
+                    threshold_low_ops(&my_neighbor_table, &my_information);
+                }
             }
         }
 
@@ -255,12 +261,11 @@ static void ble_timer_check_task(void *pvParameters)
             xSemaphoreGive(xCountingSemaphore_send);
             // 开始计时
             esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
-            vTaskDelay(pdMS_TO_TICKS(RESET_TIMER1_TIMEOUT_TIME));
+            timer2_running = true;
             timer1_timeout = false;
         }
         if (xSemaphoreTake(xCountingSemaphore_timeout2, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
-            vTaskDelay(pdMS_TO_TICKS(RESET_TIMER2_TIMEOUT_TIME));
             timer2_timeout = false;
         }
     }
@@ -591,6 +596,7 @@ void app_main(void)
 #ifdef BLE_TIMER
     xTaskCreate(ble_timer_check_task, "ble_timer_check_task", 1024, NULL, 4, NULL);
     ble_timer_init();
+    esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
 #endif
 
 #ifdef BUTTON

@@ -17,10 +17,10 @@
 #include "esp_timer.h"
 #include "freertos/projdefs.h"
 
-//#define BLE_TIMER
+#define BLE_TIMER
 
-#define TIME1_TIMER_PERIOD pdMS_TO_TICKS(100000) // 1S
-#define TIME2_TIMER_PERIOD pdMS_TO_TICKS(200000) // 2S
+#define TIME1_TIMER_PERIOD 5000000 // 10S
+#define TIME2_TIMER_PERIOD 5000000 // 20S
 
 extern SemaphoreHandle_t xCountingSemaphore_timeout1;
 extern SemaphoreHandle_t xCountingSemaphore_timeout2;
@@ -29,8 +29,10 @@ extern esp_timer_handle_t ble_time1_timer;
 extern esp_timer_handle_t ble_time2_timer;
 
 extern bool timer1_timeout;
-
 extern bool timer2_timeout;
+
+extern bool timer1_running;
+extern bool timer2_running;
 
 void ble_timer_init(void);
 

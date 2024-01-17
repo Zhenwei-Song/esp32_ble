@@ -456,8 +456,9 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
 
     if (memcmp(temp_info->reverse_next_id, info->my_id, ID_LEN) == 0) {
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
-            if (timer1_timeout == false) {                                 // 不处理超时后收到的hsrrep
-                esp_timer_stop(ble_time1_timer);                           // 定时停止
+            if (timer1_running == true) {
+                esp_timer_stop(ble_time1_timer); // 定时停止
+                timer1_running = false;
                 timer1_timeout = false;
                 info->is_connected |= true;
                 info->distance = temp_info->distance + 1;
@@ -566,8 +567,9 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
     // TODO:序列号
     if (memcmp(info->my_id, temp_info->destination_id, ID_LEN) == 0 && memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是发回给我的入网请求回复包,且是我认定的父节点（low_ops中根据链路质量最优选择的）
-        if (timer2_timeout == false) {                                                                                           // 不处理超时后收到的anrrep
-            esp_timer_stop(ble_time2_timer);                                                                                     // 定时停止
+        if (timer2_running == true) {                                                                                           // 不处理超时后收到的anrrep
+            esp_timer_stop(ble_time2_timer);
+            timer2_running = false; // 定时停止
             timer2_timeout = false;
             ESP_LOGE(DATA_TAG, "receive anrrep"); // 收到anrrep，开始向root发送入网请求
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
@@ -575,6 +577,7 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
             xSemaphoreGive(xCountingSemaphore_send);
             // 开始计时
             esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
+            timer1_running = true;
         }
     }
 }

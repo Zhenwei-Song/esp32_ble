@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-16 19:50:06
+ * @LastEditTime: 2024-01-17 14:51:21
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -41,7 +41,7 @@
 #define FINAL_DATA_LEN 31
 
 #define THRESHOLD_HIGH 100
-#define THRESHOLD_LOW 90
+#define THRESHOLD_LOW 20
 
 #define PHELLO_FINAL_DATA_LEN 18
 #define PHELLO_DATA_LEN PHELLO_FINAL_DATA_LEN - 2

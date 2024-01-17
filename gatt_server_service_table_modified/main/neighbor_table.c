@@ -1,4 +1,13 @@
 /*
+ * @Author: Zhenwei Song zhenwei.song@qq.com
+ * @Date: 2023-12-05 17:18:06
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-17 09:44:59
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
+ * @Description: 仅供学习交流使用
+ * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
+ */
+/*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
@@ -432,6 +441,7 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
 #ifdef BLE_TIMER
         // 开始计时
         esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
+        timer1_running = true;
 #endif
         // print_neighbor_table(table);
     }
@@ -466,6 +476,8 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
 #ifdef BLE_TIMER
         // 开始计时
         esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
+        timer2_running = true;
+
 #endif
         // print_neighbor_table(table);
     }
