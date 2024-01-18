@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 15:29:01
+ * @LastEditTime: 2024-01-17 17:30:27
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -164,6 +164,7 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t *anrreq = NULL;
     uint8_t *anrrep = NULL;
     uint8_t *rrer = NULL;
+    uint8_t *message = NULL;
     uint8_t *rec_data = NULL;
     uint8_t phello_len = 0;
     uint8_t anhsp_len = 0;
@@ -171,6 +172,7 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t anrreq_len = 0;
     uint8_t anrrep_len = 0;
     uint8_t rrer_len = 0;
+    uint8_t message_len = 0;
     while (1) {
         if (xSemaphoreTake(xCountingSemaphore_receive, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
@@ -183,6 +185,7 @@ static void ble_rec_data_task(void *pvParameters)
                     anrreq = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREQ, &anrreq_len);
                     anrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &anrrep_len);
                     rrer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RRER, &rrer_len);
+                    message = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_MESSAGE, &message_len);
                     // ESP_LOGI(TAG, "ADV_DATA:");
                     // esp_log_buffer_hex(TAG, rec_data, 31);
                     if (phello != NULL) {
@@ -215,6 +218,11 @@ static void ble_rec_data_task(void *pvParameters)
                         ESP_LOGE(TAG, "RRER_DATA:");
                         esp_log_buffer_hex(TAG, rrer, rrer_len);
                         resolve_rrer(rrer, &my_information);
+                    }
+                    if (message != NULL) {
+                        ESP_LOGE(TAG, "MESSAGE_DATA:");
+                        esp_log_buffer_hex(TAG, message, message_len);
+                        resolve_message(message, &my_information);
                     }
                     free(rec_data);
                 }
@@ -479,25 +487,21 @@ static void all_queue_init(void)
 #endif // QUEUE
 
 #ifdef BUTTON
-#if 1
+#ifndef SELF_ROOT
 void button_ops()
 {
+    ESP_LOGE(DATA_TAG, "SENDING MY MESSAGE");
+    memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_message_16, &my_information, NULL), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+    queue_push(&send_queue, adv_data_final_for_message, 0);
+    xSemaphoreGive(xCountingSemaphore_send);
 }
 #else
 void button_ops()
 {
-    static char i;
-    adv_data_31[30] = i;
-    i++;
-    if (i == 16) {
-        i = 1;
-    }
-    esp_ble_gap_config_adv_data_raw(adv_data_31, 31);
-    esp_ble_gap_start_advertising(&adv_params);
-    // esp_ble_gap_stop_advertising();
 }
 #endif
 #endif // BUTTON
+
 #ifdef GPIO
 static void esp_gpio_init(void)
 {

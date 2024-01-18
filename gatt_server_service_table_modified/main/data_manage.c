@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 15:26:33
+ * @LastEditTime: 2024-01-17 18:32:43
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -35,6 +35,8 @@ uint8_t anrrep_final[ANRREP_FINAL_DATA_LEN] = {ANRREP_FINAL_DATA_LEN - 1, ESP_BL
 
 uint8_t rrer_final[RRER_FINAL_DATA_LEN] = {RRER_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_RRER};
 
+uint8_t message_final[MESSAGE_FINAL_DATA_LEN] = {MESSAGE_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_MESSAGE};
+
 uint8_t temp_quality_of_mine[QUALITY_LEN] = {0};
 
 uint8_t temp_data_31[FINAL_DATA_LEN] = {0};
@@ -45,9 +47,16 @@ uint8_t adv_data_final_for_hsrrep[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_anrrep[FINAL_DATA_LEN] = {0};
 uint8_t adv_data_final_for_rrer[FINAL_DATA_LEN] = {0};
+uint8_t adv_data_final_for_message[FINAL_DATA_LEN] = {0};
 
 uint8_t adv_data_name_7[HEAD_DATA_LEN] = {
     HEAD_DATA_LEN - 1, ESP_BLE_AD_TYPE_NAME_CMPL, 'O', 'L', 'T', 'H', 'R'};
+
+uint8_t adv_data_message_16[MESSAGE_DATA_LEN - 6] = {
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10};
+
+uint8_t adv_data_response_16[MESSAGE_DATA_LEN - 6] = {
+    0x10, 0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
 
 uint8_t adv_data_31[31] = {
     /* device name */
@@ -631,5 +640,91 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
         timer3_running = true;
+    }
+}
+
+uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id)
+{
+    uint8_t message[MESSAGE_DATA_LEN] = {0};
+    uint8_t temp_source_id[ID_LEN];
+    uint8_t temp_next_id[ID_LEN];
+    uint8_t temp_des_id[ID_LEN];
+    memcpy(temp_source_id, info->my_id, ID_LEN);
+    if (info->is_root == false) { // 我发给root的消息
+        memcpy(temp_next_id, info->next_id, ID_LEN);
+        memcpy(temp_des_id, info->root_id, ID_LEN);
+    }
+    else { // root回复的消息
+        memcpy(temp_next_id, get_next_id(&my_routing_table, des_id), ID_LEN);
+        memcpy(temp_des_id, des_id, ID_LEN);
+    }
+    message[0] |= temp_source_id[0]; // my ID
+    message[1] |= temp_source_id[1];
+    message[2] |= temp_next_id[0];
+    message[3] |= temp_next_id[1];
+    message[4] |= temp_des_id[0];
+    message[5] |= temp_des_id[1];
+    memcpy(message_final + 2, message, 6);
+    memcpy(message_final + 8, message_data, MESSAGE_DATA_LEN - 6);
+    return message_final;
+}
+
+uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info)
+{
+    uint8_t message[MESSAGE_DATA_LEN] = {0};
+    uint8_t temp_source_id[ID_LEN];
+    uint8_t temp_des_id[ID_LEN];
+    uint8_t temp_next_id[ID_LEN];
+    uint8_t temp_useful_message[USEFUL_MESSAGE_LEN];
+    memcpy(temp_source_id, message_info->source_id, ID_LEN);
+    memcpy(temp_des_id, message_info->destination_id, ID_LEN);
+    memcpy(temp_useful_message, message_info->useful_message, USEFUL_MESSAGE_LEN);
+    if (memcmp(temp_des_id, info->root_id, ID_LEN) == 0) // 向上转发
+        memcpy(temp_next_id, info->next_id, ID_LEN);
+    else // 向下转发
+        memcpy(temp_next_id, get_next_id(&my_routing_table, temp_des_id), ID_LEN);
+    message[0] |= temp_source_id[0];
+    message[1] |= temp_source_id[1];
+    message[2] |= temp_next_id[0];
+    message[3] |= temp_next_id[1];
+    message[4] |= temp_des_id[0];
+    message[5] |= temp_des_id[1];
+    memcpy(message_final + 2, message, 6);
+    memcpy(message_final + 8, temp_useful_message, MESSAGE_DATA_LEN - 6);
+    return message_final;
+}
+
+void resolve_message(uint8_t *message_data, p_my_info info)
+{
+    p_message_info temp_info = (p_message_info)malloc(sizeof(message_info));
+    uint8_t temp[MESSAGE_DATA_LEN];
+    memcpy(temp, message_data, MESSAGE_DATA_LEN);
+    memcpy(temp_info->source_id, temp, ID_LEN);
+    memcpy(temp_info->next_id, temp + 2, ID_LEN);
+    memcpy(temp_info->destination_id, temp + 4, ID_LEN);
+    memcpy(temp_info->useful_message, temp + 6, USEFUL_MESSAGE_LEN);
+    if (memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {            // message下一跳是我
+        if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // message目的地是我
+            if (info->is_root == true) {                                   // 根节点接收message并回复
+                ESP_LOGE(DATA_TAG, "receive message from node,responding");
+                ESP_LOGE(DATA_TAG, "CHECK1");
+                memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+                queue_push(&send_queue, adv_data_final_for_message, 0);
+                xSemaphoreGive(xCountingSemaphore_send);
+                ESP_LOGE(DATA_TAG, "CHECK2");
+            }
+            else { // 接收到根节点发回的message
+                ESP_LOGE(DATA_TAG, "receive message from root");
+            }
+        }
+        else { // message的目的地不是我，但是由我转发
+            ESP_LOGE(DATA_TAG, "receive message,transfering");
+            memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_transfer_message(temp_info, info), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_message, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+        }
+    }
+    else { // message下一跳不是我,且不由我转发
+        ESP_LOGE(DATA_TAG, "receive message,but not transfer");
     }
 }

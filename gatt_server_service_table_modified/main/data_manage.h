@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 14:51:21
+ * @LastEditTime: 2024-01-17 18:49:16
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -22,7 +22,7 @@
 
 #include "esp_log.h"
 
-// #define SELF_ROOT
+#define SELF_ROOT
 
 #define DATA_TAG "DATA"
 
@@ -36,6 +36,7 @@
 #define QUALITY_LEN 2
 #define THRESHOLD_LEN 2
 #define SERIAL_NUM_LEN 2
+#define USEFUL_MESSAGE_LEN 16
 
 #define HEAD_DATA_LEN 7
 #define FINAL_DATA_LEN 31
@@ -60,6 +61,9 @@
 
 #define RRER_FINAL_DATA_LEN 10
 #define RRER_DATA_LEN RRER_FINAL_DATA_LEN - 2
+
+#define MESSAGE_DATA_LEN MESSAGE_FINAL_DATA_LEN - 2
+#define MESSAGE_FINAL_DATA_LEN 24
 
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
@@ -128,6 +132,13 @@ typedef struct rrer_info {
     uint8_t destination_id[ID_LEN];
 } rrer_info, *p_rrer_info;
 
+typedef struct message_info {
+    uint8_t source_id[ID_LEN];
+    uint8_t next_id[ID_LEN];
+    uint8_t destination_id[ID_LEN];
+    uint8_t useful_message[USEFUL_MESSAGE_LEN];
+} message_info, *p_message_info;
+
 extern my_info my_information;
 
 extern uint8_t threshold_high[QUALITY_LEN];
@@ -149,6 +160,10 @@ extern uint8_t adv_data_final_for_anhsp[FINAL_DATA_LEN];
 extern uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN];
 
 extern uint8_t adv_data_final_for_rrer[FINAL_DATA_LEN];
+
+extern uint8_t adv_data_final_for_message[FINAL_DATA_LEN];
+
+extern uint8_t adv_data_message_16[MESSAGE_DATA_LEN - 6];
 // 31字节数据
 extern uint8_t adv_data_31[31];
 
@@ -187,4 +202,10 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info);
 uint8_t *generate_rrer(p_my_info info);
 
 void resolve_rrer(uint8_t *rrer_data, p_my_info info);
+
+uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id);
+
+uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info);
+
+void resolve_message(uint8_t *message_data, p_my_info info);
 #endif // _DATA_H_
