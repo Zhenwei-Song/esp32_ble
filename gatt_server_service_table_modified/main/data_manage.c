@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 18:32:43
+ * @LastEditTime: 2024-01-18 11:39:25
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -385,7 +385,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
             ESP_LOGE(DATA_TAG, "transer anhsp");
             temp_info->distance = temp_info->distance + 1;
             /// insert_routing_node(&my_routing_table, temp_info->source_id, temp_info->last_root_id, temp_info->node_id, temp_info->distance); // 记录入路由表，用于反向路由
-            print_routing_table(&my_routing_table);
+            // print_routing_table(&my_routing_table);
         }
         else { // 不是由自己中转，不处理
             ESP_LOGE(DATA_TAG, "get anhsp,but not transfer");
@@ -468,10 +468,10 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
 
     if (memcmp(temp_info->reverse_next_id, info->my_id, ID_LEN) == 0) {
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
-            if (timer1_running == true) {
-                esp_timer_stop(ble_time1_timer); // 定时停止
+            if (timer1_running == true && timer1_timeout == false) {       // 仅接收timer1未超时接收的回复包
+                esp_timer_stop(ble_time1_timer);                           // 定时停止
+                printf("hsrrep timer1 stopped\n");
                 timer1_running = false;
-                timer1_timeout = false;
                 info->is_connected |= true;
                 info->distance = temp_info->distance + 1;
                 ESP_LOGE(DATA_TAG, "receive hsrrep");
@@ -579,10 +579,10 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
     // TODO:序列号
     if (memcmp(info->my_id, temp_info->destination_id, ID_LEN) == 0 && memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是发回给我的入网请求回复包,且是我认定的父节点（low_ops中根据链路质量最优选择的）
-        if (timer2_running == true) {                                                                                            // 不处理超时后收到的anrrep
+        if (timer2_running == true && timer2_timeout == false) {                                                                 // 不处理超时后收到的anrrep
             esp_timer_stop(ble_time2_timer);
-            timer2_running = false; // 定时停止
-            timer2_timeout = false;
+            printf("anrrep timer2 stopped\n");
+            timer2_running = false;               // 定时停止
             ESP_LOGE(DATA_TAG, "receive anrrep"); // 收到anrrep，开始向root发送入网请求
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
@@ -590,6 +590,7 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
             // 开始计时
             esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
             timer1_running = true;
+            printf("anrrep timer1 started\n");
         }
     }
 }
@@ -611,6 +612,7 @@ uint8_t *generate_rrer(p_my_info info)
     rrer[4] |= temp_des_id[0];
     rrer[5] |= temp_des_id[1];
     memcpy(rrer_final + 2, rrer, RRER_DATA_LEN);
+    ESP_LOGE(DATA_TAG, "send rrer");
     return rrer_final;
 }
 
@@ -640,6 +642,7 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
         timer3_running = true;
+        destroy_routing_table(&my_routing_table); // 清空我的路由表
     }
 }
 
@@ -706,12 +709,15 @@ void resolve_message(uint8_t *message_data, p_my_info info)
     if (memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {            // message下一跳是我
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // message目的地是我
             if (info->is_root == true) {                                   // 根节点接收message并回复
-                ESP_LOGE(DATA_TAG, "receive message from node,responding");
-                ESP_LOGE(DATA_TAG, "CHECK1");
-                memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
-                queue_push(&send_queue, adv_data_final_for_message, 0);
-                xSemaphoreGive(xCountingSemaphore_send);
-                ESP_LOGE(DATA_TAG, "CHECK2");
+                if (routing_table_check_id(&my_routing_table, temp_info->source_id) == true) {
+                    ESP_LOGE(DATA_TAG, "receive message from node,responding");
+                    memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+                    queue_push(&send_queue, adv_data_final_for_message, 0);
+                    xSemaphoreGive(xCountingSemaphore_send);
+                }
+                else {
+                    ESP_LOGE(DATA_TAG, "receive message from node,but source is unknown,not responding");
+                }
             }
             else { // 接收到根节点发回的message
                 ESP_LOGE(DATA_TAG, "receive message from root");

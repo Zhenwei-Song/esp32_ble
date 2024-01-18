@@ -20,8 +20,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define NEIGHBOR_TABLE_COUNT 10
-
 typedef struct neighbor_note {
     uint8_t id[ID_LEN];
     bool is_root;

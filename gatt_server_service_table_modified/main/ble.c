@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 17:30:27
+ * @LastEditTime: 2024-01-18 10:30:27
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -61,13 +61,6 @@ static uint8_t filtered_id_eb36[ID_LEN] = {235, 54};
 static uint8_t filtered_id_b50a[ID_LEN] = {181, 10};
 #endif // FILTER
 
-#define REFRESH_ROUTING_TABLE_TIME 1000
-#define ADV_TIME 200
-#define REC_TIME 100
-#define HELLO_TIME 3000
-#define RESET_TIMER1_TIMEOUT_TIME 1000
-#define RESET_TIMER2_TIMEOUT_TIME 1000
-
 #ifdef GPIO
 #define GPIO_OUTPUT_IO_0 18
 #define GPIO_OUTPUT_IO_1 19
@@ -101,7 +94,7 @@ static void ble_routing_table_task(void *pvParameters)
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
         update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
-        if (timer3_running == false) { // 路由错误后等待一段时间后才进行路由发现
+        if (timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false) { // 路由错误后等待一段时间后才进行路由发现
             if (my_information.is_connected == false) {
                 if (threshold_high_flag == true) {
                     ESP_LOGE(DATA_TAG, "threshold_high_flag");
@@ -262,7 +255,7 @@ static void ble_send_data_task(void *pvParameters)
     }
 }
 
-static void ble_timer_check_task(void *pvParameters)
+static void ble_timer1_check_task(void *pvParameters)
 {
     while (1) {
         if (xSemaphoreTake(xCountingSemaphore_timeout1, portMAX_DELAY) == pdTRUE) // 得到了信号量
@@ -273,11 +266,19 @@ static void ble_timer_check_task(void *pvParameters)
             // 开始计时
             esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
             timer2_running = true;
+            printf("timer1 timeout ,timer2 started\n");
             timer1_timeout = false;
         }
+    }
+}
+
+static void ble_timer2_check_task(void *pvParameters)
+{
+    while (1) {
         if (xSemaphoreTake(xCountingSemaphore_timeout2, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
-            timer2_timeout = false;
+            timer2_timeout = false; // 一切重置，回到最初，重新在三个阈值中选择
+            printf("timer2 timeout ,restart\n");
         }
     }
 }
@@ -410,7 +411,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 #endif // THROUGHPUT
 
 #ifndef THROUGHPUT
-                    ESP_LOGW(TAG, "%s is found", remote_device_name);
+                    // ESP_LOGW(TAG, "%s is found", remote_device_name);
 #ifdef FILTER
                     if (memcmp(my_information.my_id, filtered_id_b50a, 2) == 0) {
                         if (memcmp(filtered_id_eb36, scan_result->scan_rst.bda + 4, 2) == 0 ||
@@ -601,9 +602,9 @@ void app_main(void)
     xTaskCreate(ble_send_data_task, "ble_send_data_task", 2048, NULL, 3, NULL);
     xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 4, NULL);
 #ifdef BLE_TIMER
-    xTaskCreate(ble_timer_check_task, "ble_timer_check_task", 1024, NULL, 4, NULL);
+    xTaskCreate(ble_timer1_check_task, "ble_timer1_check_task", 1024, NULL, 4, NULL);
+    xTaskCreate(ble_timer2_check_task, "ble_timer2_check_task", 1024, NULL, 4, NULL);
     ble_timer_init();
-    esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
 #endif
 
 #ifdef BUTTON

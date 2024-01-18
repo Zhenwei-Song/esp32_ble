@@ -1,3 +1,12 @@
+/*
+ * @Author: Zhenwei Song zhenwei.song@qq.com
+ * @Date: 2024-01-16 15:05:23
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-18 11:14:09
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble_timer.h
+ * @Description: 仅供学习交流使用
+ * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
+ */
 
 #ifndef BLE_TIMER_H_
 #define BLE_TIMER_H_
@@ -19,9 +28,19 @@
 
 #define BLE_TIMER
 
+#define REFRESH_ROUTING_TABLE_TIME 1000 // 影响路由表的维护，定为1s
+#define ADV_TIME 20
+#define REC_TIME 10
+#define HELLO_TIME 2500
+#define RESET_TIMER1_TIMEOUT_TIME 1000
+#define RESET_TIMER2_TIMEOUT_TIME 1000
+#define RERR_REPEAT_TIME 1000
+
+#define NEIGHBOR_TABLE_COUNT 5 // 邻居表维护时长5s
+
 #define TIME1_TIMER_PERIOD 5000000
-#define TIME2_TIMER_PERIOD 5000000
-#define TIME3_TIMER_PERIOD 2000000 //2 seconds
+#define TIME2_TIMER_PERIOD 5000000  // 5 seconds
+#define TIME3_TIMER_PERIOD 10000000 // 10 seconds
 
 extern SemaphoreHandle_t xCountingSemaphore_timeout1;
 extern SemaphoreHandle_t xCountingSemaphore_timeout2;

@@ -1,9 +1,9 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-27 16:34:01
- * @FilePath: \esp32\gatt_server_service_table_modified\main\routing_table.c
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-18 11:09:20
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -172,7 +172,7 @@ bool routing_table_check_id(p_routing_table table, uint8_t *id)
     }
     else {
         while (temp != NULL) {
-            if (memcmp(temp->source_id, id, ID_LEN) == 0)
+            if (memcmp(temp->destination_id, id, ID_LEN) == 0)
                 return true;
             else
                 temp = temp->next;

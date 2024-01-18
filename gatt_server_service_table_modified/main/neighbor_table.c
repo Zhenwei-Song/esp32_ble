@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-17 15:33:35
+ * @LastEditTime: 2024-01-18 11:11:21
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -22,6 +22,7 @@
 #include "ble_queue.h"
 #include "ble_timer.h"
 #include "neighbor_table.h"
+#include "routing_table.h"
 
 bool refresh_flag_for_neighbor = false;
 
@@ -296,10 +297,13 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     ESP_LOGE(NEIGHBOR_TAG, "father deleted"); // 自己的父节点无了，发送rrer
                     memcpy(adv_data_final_for_rrer, data_match(adv_data_name_7, generate_rrer(info), HEAD_DATA_LEN, RRER_FINAL_DATA_LEN), FINAL_DATA_LEN);
                     queue_push(&send_queue, adv_data_final_for_rrer, 0);
+                    vTaskDelay(pdMS_TO_TICKS(RERR_REPEAT_TIME));
+                    queue_push(&send_queue, adv_data_final_for_rrer, 0);
                     xSemaphoreGive(xCountingSemaphore_send);
                     // 开始计时
                     esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
                     timer3_running = true;
+                    destroy_routing_table(&my_routing_table); // 清空路由表
                 }
 #endif
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
@@ -448,6 +452,7 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
         timer1_running = true;
+        printf("between_ops timer1 started\n");
 #endif
         // print_neighbor_table(table);
     }
@@ -483,6 +488,7 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
         timer2_running = true;
+        printf("low_ops timer2 started\n");
 
 #endif
         // print_neighbor_table(table);
