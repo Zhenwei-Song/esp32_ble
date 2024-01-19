@@ -33,7 +33,7 @@ bool threshold_low_flag = false;
 neighbor_table my_neighbor_table;
 
 /**
- * @description: 初始化路由表
+ * @description: 初始化邻居表
  * @param {p_neighbor_table} table
  * @return {*}
  */
@@ -43,7 +43,7 @@ void init_neighbor_table(p_neighbor_table table)
 }
 
 /**
- * @description: 向路由表添加节点
+ * @description: 向邻居表添加节点
  * @param {p_neighbor_table} table
  * @param {uint8_t} *new_id
  * @param {bool} is_root
@@ -105,7 +105,7 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
 }
 
 /**
- * @description:从路由链表移除项
+ * @description:从邻居链表移除项
  * @param {p_neighbor_table} table
  * @param {p_neighbor_note} old_neighbor
  * @return {*}
@@ -135,7 +135,7 @@ void remove_neighbor_node_from_node(p_neighbor_table table, p_neighbor_note old_
 }
 
 /**
- * @description: 从路由表移除项（根据id）
+ * @description: 从邻居表移除项（根据id）
  * @param {p_neighbor_table} table
  * @param {uint8_t} *old_id
  * @return {*}
@@ -167,7 +167,7 @@ void remove_neighbor_node(p_neighbor_table table, uint8_t *old_id)
 }
 
 /**
- * @description: 判断路由表是否为空
+ * @description: 判断邻居表是否为空
  * @param {p_neighbor_table} table
  * @return {*}true：为空    false：非空
  */
@@ -180,7 +180,7 @@ bool is_neighbor_table_empty(p_neighbor_table table)
 }
 
 /**
- * @description: 检查路由表中是否有相同项
+ * @description: 检查邻居表中是否有相同项
  * @param {p_neighbor_table} table
  * @param {p_neighbor_note} neighbor_note
  * @return {*} true:有相同项;false：无相同项
@@ -274,7 +274,7 @@ uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id)
 }
 
 /**
- * @description: 更新路由表的计数号（-1）
+ * @description: 更新邻居表的计数号（-1）
  * @param {p_neighbor_table} table
  * @return {*}
  */
@@ -319,7 +319,7 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
         }
         // print_neighbor_table(table);
     }
-    else { // 路由表里一个节点都没有,但是不是因为自己的父节点断开
+    else { // 邻居表里一个节点都没有,但是不是因为自己的父节点断开
 #ifndef SELF_ROOT
         info->is_connected = false;
         info->distance = 100;
@@ -331,6 +331,12 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
     }
 }
 
+/**
+ * @description: 更新邻居表中每一项的链路质量，并判断处于阈值哪个区间
+ * @param {p_neighbor_table} table
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info)
 {
     threshold_high_flag = 0;
@@ -394,6 +400,12 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
     }
 }
 #else
+/**
+ * @description: 阈值上方时的入网行为
+ * @param {p_neighbor_table} table
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void threshold_high_ops(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
@@ -422,6 +434,12 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
 }
 #endif
 
+/**
+ * @description: 阈值中间时入网行为
+ * @param {p_neighbor_table} table
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void threshold_between_ops(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
@@ -458,6 +476,12 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
     }
 }
 
+/**
+ * @description: 阈值下方时入网行为
+ * @param {p_neighbor_table} table
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void threshold_low_ops(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {
@@ -495,6 +519,12 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
     }
 }
 
+/**
+ * @description: 设置我的下一跳的链路质量和距离（未使用）
+ * @param {p_neighbor_table} table
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info)
 {
     if (table->head != NULL) {

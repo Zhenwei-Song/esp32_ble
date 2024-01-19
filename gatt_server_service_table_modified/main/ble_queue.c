@@ -125,6 +125,11 @@ uint8_t *queue_pop(p_queue q)
     }
 }
 
+/**
+ * @description: 获取某项的rssi
+ * @param {p_queue} q
+ * @return {*}
+ */
 int get_queue_node_rssi(p_queue q)
 {
     if (q->head != NULL) {

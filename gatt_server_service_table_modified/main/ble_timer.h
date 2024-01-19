@@ -41,6 +41,7 @@
 #define TIME1_TIMER_PERIOD 5000000
 #define TIME2_TIMER_PERIOD 5000000  // 5 seconds
 #define TIME3_TIMER_PERIOD 10000000 // 10 seconds
+#define TIME4_TIMER_PERIOD 20000000 // 20 seconds
 
 extern SemaphoreHandle_t xCountingSemaphore_timeout1;
 extern SemaphoreHandle_t xCountingSemaphore_timeout2;
@@ -48,6 +49,7 @@ extern SemaphoreHandle_t xCountingSemaphore_timeout2;
 extern esp_timer_handle_t ble_time1_timer;
 extern esp_timer_handle_t ble_time2_timer;
 extern esp_timer_handle_t ble_time3_timer;
+extern esp_timer_handle_t ble_time4_timer;
 
 extern bool timer1_timeout;
 extern bool timer2_timeout;
@@ -56,6 +58,8 @@ extern bool timer1_running;
 extern bool timer2_running;
 extern bool timer3_running;
 
+extern bool entry_network_flag;
+
 void ble_timer_init(void);
 
 void time1_timer_cb(void);
@@ -63,5 +67,7 @@ void time1_timer_cb(void);
 void time2_timer_cb(void);
 
 void time3_timer_cb(void);
+
+void time4_timer_cb(void);
 
 #endif

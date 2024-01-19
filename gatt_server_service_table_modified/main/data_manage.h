@@ -22,7 +22,7 @@
 
 #include "esp_log.h"
 
-#define SELF_ROOT
+//#define SELF_ROOT
 
 #define DATA_TAG "DATA"
 

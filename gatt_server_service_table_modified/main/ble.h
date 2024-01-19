@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2023-12-05 17:19:14
+ * @LastEditTime: 2024-01-18 19:26:48
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
@@ -14,7 +14,7 @@
  */
 
 // #define GPIO //GPIO相关
- //#define THROUGHPUT//吞吐量测试
+// #define THROUGHPUT//吞吐量测试
 #define ROUTINGTABLE // 路由表（链表）
 #define QUEUE        // 发送、接收队列
 #define BUTTON       // 按键
@@ -56,7 +56,7 @@ enum {
 
 #define TAG "BLE_BROADCAST"
 
-//SemaphoreHandle_t xMutex1;
+// SemaphoreHandle_t xMutex1;
 
 #define ADV_INTERVAL_MS 2000 // 广播间隔时间，单位：毫秒
 #define SCAN_INTERVAL_MS 225

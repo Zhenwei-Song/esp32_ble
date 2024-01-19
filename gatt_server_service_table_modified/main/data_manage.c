@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 11:39:25
+ * @LastEditTime: 2024-01-19 11:52:26
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -94,6 +94,13 @@ uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t 
     }
 }
 
+/**
+ * @description: 计算链路质量
+ * @param {int} rssi
+ * @param {uint8_t} *quality_from_upper
+ * @param {uint8_t} distance
+ * @return {*}
+ */
 uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance)
 {
     double temp_rssi = (double)(-rssi);
@@ -646,6 +653,13 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
     }
 }
 
+/**
+ * @description: 生成用户消息（包括下面节点向root发，和root返回节点消息）
+ * @param {uint8_t} *message_data
+ * @param {p_my_info} info
+ * @param {uint8_t} *des_id
+ * @return {*}
+ */
 uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id)
 {
     uint8_t message[MESSAGE_DATA_LEN] = {0};
@@ -672,6 +686,12 @@ uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id
     return message_final;
 }
 
+/**
+ * @description: 生成中转message消息，包括向上和向下转发
+ * @param {p_message_info} message_info
+ * @param {p_my_info} info
+ * @return {*}
+ */
 uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info)
 {
     uint8_t message[MESSAGE_DATA_LEN] = {0};
@@ -697,6 +717,12 @@ uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info)
     return message_final;
 }
 
+/**
+ * @description: 解析message消息（root节点收到message则原路返回一条message）
+ * @param {uint8_t} *message_data
+ * @param {p_my_info} info
+ * @return {*}
+ */
 void resolve_message(uint8_t *message_data, p_my_info info)
 {
     p_message_info temp_info = (p_message_info)malloc(sizeof(message_info));

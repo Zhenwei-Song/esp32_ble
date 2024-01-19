@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 10:30:27
+ * @LastEditTime: 2024-01-19 11:58:40
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -12,8 +12,14 @@
  * 添加了吞吐量测试
  * 添加了rssi
  * 添加了发送和接收消息队列，用单独的task进行处理
- * 添加了路由表，添加了路由表的刷新机制
- * 使用信号来控制发送和数据处理
+ * 添加了邻居表，添加了邻居表的刷新机制
+ * 添加了路由表，添加了路由表的刷新机制（并未使用定时刷新删除）
+ * 使用信号来控制发送和数据处理，以及定时器超时动作
+ * 添加了定时器的使用
+ * 完整的实现了路由发现阶段，并已验证 TODO:包计数号
+ * 路由维护阶段实现了RRER TODO:路由表的维护
+ * 入网后定时进行入网发现，以获取最好的入网路径
+ * 添加了基于ID的包过滤机制，方便用于测试
  * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
  */
 
@@ -78,6 +84,11 @@ static uint64_t cal_len = 0;
 queue rec_queue;
 queue send_queue;
 
+/**
+ * @description: 定时发送hello包
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void hello_task(void *pvParameters)
 {
     while (1) {
@@ -88,31 +99,35 @@ static void hello_task(void *pvParameters)
     }
 }
 
+/**
+ * @description: 刷新邻居表，更新链路质量，进行路由发现
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void ble_routing_table_task(void *pvParameters)
 {
     while (1) {
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
         update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
-        if (timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false) { // 路由错误后等待一段时间后才进行路由发现
-            if (my_information.is_connected == false) {
-                if (threshold_high_flag == true) {
-                    ESP_LOGE(DATA_TAG, "threshold_high_flag");
-                    threshold_high_ops(&my_neighbor_table, &my_information);
+        if ((timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false && my_information.is_connected == false) || (timer3_running == false && entry_network_flag == true && my_information.is_connected == true)) { // 路由错误后等待一段时间后才进行路由发现
+            entry_network_flag = false;
+            if (threshold_high_flag == true) {
+                ESP_LOGE(DATA_TAG, "threshold_high_flag");
+                threshold_high_ops(&my_neighbor_table, &my_information);
+            }
+            else if (threshold_low_flag == true) {
+                ESP_LOGE(DATA_TAG, "threshold_between_flag");
+                if (timer1_running == false) {
+                    ESP_LOGE(DATA_TAG, "threshold_between_ops");
+                    threshold_between_ops(&my_neighbor_table, &my_information);
                 }
-                else if (threshold_low_flag == true) {
-                    ESP_LOGE(DATA_TAG, "threshold_between_flag");
-                    if (timer1_running == false) {
-                        ESP_LOGE(DATA_TAG, "threshold_between_ops");
-                        threshold_between_ops(&my_neighbor_table, &my_information);
-                    }
-                }
-                else {
-                    ESP_LOGE(DATA_TAG, "threshold_low_flag");
-                    if (timer2_running == false) {
-                        ESP_LOGE(DATA_TAG, "threshold_low_ops");
-                        threshold_low_ops(&my_neighbor_table, &my_information);
-                    }
+            }
+            else {
+                ESP_LOGE(DATA_TAG, "threshold_low_flag");
+                if (timer2_running == false) {
+                    ESP_LOGE(DATA_TAG, "threshold_low_ops");
+                    threshold_low_ops(&my_neighbor_table, &my_information);
                 }
             }
         }
@@ -149,6 +164,11 @@ static void ble_routing_table_task(void *pvParameters)
     }
 }
 
+/**
+ * @description: 处理接收数据
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void ble_rec_data_task(void *pvParameters)
 {
     uint8_t *phello = NULL;
@@ -225,6 +245,11 @@ static void ble_rec_data_task(void *pvParameters)
     }
 }
 
+/**
+ * @description: 发送数据
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void ble_send_data_task(void *pvParameters)
 {
     uint8_t *send_data = NULL;
@@ -255,6 +280,11 @@ static void ble_send_data_task(void *pvParameters)
     }
 }
 
+/**
+ * @description: 监听timer1超时
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void ble_timer1_check_task(void *pvParameters)
 {
     while (1) {
@@ -272,6 +302,11 @@ static void ble_timer1_check_task(void *pvParameters)
     }
 }
 
+/**
+ * @description: 监听timer2超时
+ * @param {void} *pvParameters
+ * @return {*}
+ */
 static void ble_timer2_check_task(void *pvParameters)
 {
     while (1) {
@@ -489,6 +524,10 @@ static void all_queue_init(void)
 
 #ifdef BUTTON
 #ifndef SELF_ROOT
+/**
+ * @description: 非root节点按下按键，向root发送message
+ * @return {*}
+ */
 void button_ops()
 {
     ESP_LOGE(DATA_TAG, "SENDING MY MESSAGE");
@@ -605,6 +644,9 @@ void app_main(void)
     xTaskCreate(ble_timer1_check_task, "ble_timer1_check_task", 1024, NULL, 4, NULL);
     xTaskCreate(ble_timer2_check_task, "ble_timer2_check_task", 1024, NULL, 4, NULL);
     ble_timer_init();
+#ifndef SELF_ROOT
+    esp_timer_start_periodic(ble_time4_timer, TIME3_TIMER_PERIOD);
+#endif
 #endif
 
 #ifdef BUTTON

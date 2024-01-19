@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 11:09:20
+ * @LastEditTime: 2024-01-19 11:51:02
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -207,6 +207,12 @@ void refresh_cnt_routing_table(p_routing_table table, p_my_info info)
     }
 }
 
+/**
+ * @description: 根据路由表获取反向路由的下一跳id
+ * @param {p_routing_table} table
+ * @param {uint8_t} *des_id
+ * @return {*}
+ */
 uint8_t *get_next_id(p_routing_table table, uint8_t *des_id)
 {
     p_routing_note temp = table->head;
@@ -220,7 +226,7 @@ uint8_t *get_next_id(p_routing_table table, uint8_t *des_id)
 }
 
 /**
- * @description: 打印邻居表
+ * @description: 打印路由表
  * @param {p_routing_table} table
  * @return {*}
  */
