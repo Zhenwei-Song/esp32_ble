@@ -12,7 +12,7 @@
 #include "ble_timer.h"
 #include "esp_gap_ble_api.h"
 #include "neighbor_table.h"
-#include "routing_table.h"
+#include "down_routing_table.h"
 
 SemaphoreHandle_t xCountingSemaphore_send;
 SemaphoreHandle_t xCountingSemaphore_receive;
@@ -242,7 +242,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
                 info->update = 2;
             else
                 info->update = temp_info->update + 1;
-            ESP_LOGE(ROUTING_TAG, "!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            ESP_LOGE(DOWN_ROUTING_TAG, "!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         }
     }
     else {                                                      // 自己非root
@@ -376,7 +376,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
     /*                                  开始转发到root                                 */
     /* -------------------------------------------------------------------------- */
     if (info->is_root) {                                                                                                                                                   // 根节点 回复hsrrep
-        insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);                                          // 把它加入到自己的路由表里
+        insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);                                          // 把它加入到自己的路由表里
         memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(info, temp_info->source_id), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN); // 发送入网请求的节点成了根节点发送入网请求回复包的目的节点
         queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
         xSemaphoreGive(xCountingSemaphore_send);
@@ -384,15 +384,15 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
     }
     else {
         if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {                                             // 由自己中转，开始转发
-            insert_routing_node(&my_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1); // 把它加入到自己的路由表里，自己成了它的父节点（父节点的选择由子节点根据链路质量确定）
+            insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1); // 把它加入到自己的路由表里，自己成了它的父节点（父节点的选择由子节点根据链路质量确定）
             // TODO:未考虑路由表的维护
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_transfer_anhsp(temp_info, info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
             xSemaphoreGive(xCountingSemaphore_send);
             ESP_LOGE(DATA_TAG, "transer anhsp");
             temp_info->distance = temp_info->distance + 1;
-            /// insert_routing_node(&my_routing_table, temp_info->source_id, temp_info->last_root_id, temp_info->node_id, temp_info->distance); // 记录入路由表，用于反向路由
-            // print_routing_table(&my_routing_table);
+            /// insert_down_routing_node(&my_down_routing_table, temp_info->source_id, temp_info->last_root_id, temp_info->node_id, temp_info->distance); // 记录入路由表，用于反向路由
+            // print_down_routing_table(&my_down_routing_table);
         }
         else { // 不是由自己中转，不处理
             ESP_LOGE(DATA_TAG, "get anhsp,but not transfer");
@@ -415,7 +415,7 @@ uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id)
     uint8_t temp_reverse_next_id[ID_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, des_id, ID_LEN);
-    temp_next_id = get_next_id(&my_routing_table, des_id);
+    temp_next_id = get_down_routing_next_id(&my_down_routing_table, des_id);
     if (temp_next_id != NULL)
         memcpy(temp_reverse_next_id, temp_next_id, ID_LEN);
     hsrrep[1] |= 0;             // distance
@@ -443,7 +443,7 @@ uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info)
     uint8_t temp_reverse_next_id[ID_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, hsrrep_info->destination_id, ID_LEN);
-    memcpy(temp_reverse_next_id, get_next_id(&my_routing_table, temp_destination_id), ID_LEN);
+    memcpy(temp_reverse_next_id, get_down_routing_next_id(&my_down_routing_table, temp_destination_id), ID_LEN);
 
     hsrrep[1] = hsrrep_info->distance + 1;
     hsrrep[4] |= temp_my_id[0]; // 节点ID
@@ -486,7 +486,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
         }
         else {                                // 不是发给我的hsrrep（但是我是入网请求节点和根节点入网路径上的节点）
             if (info->is_connected == true) { // 由入网的节点转发
-                // insert_routing_node(&my_routing_table, info->root_id, temp_info->destination_id, temp_info->node_id, temp_info->distance + 1);
+                // insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->destination_id, temp_info->node_id, temp_info->distance + 1);
                 memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
                 queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
                 xSemaphoreGive(xCountingSemaphore_send);
@@ -649,7 +649,7 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
         timer3_running = true;
-        destroy_routing_table(&my_routing_table); // 清空我的路由表
+        destroy_down_routing_table(&my_down_routing_table); // 清空我的路由表
     }
 }
 
@@ -672,7 +672,7 @@ uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id
         memcpy(temp_des_id, info->root_id, ID_LEN);
     }
     else { // root回复的消息
-        memcpy(temp_next_id, get_next_id(&my_routing_table, des_id), ID_LEN);
+        memcpy(temp_next_id, get_down_routing_next_id(&my_down_routing_table, des_id), ID_LEN);
         memcpy(temp_des_id, des_id, ID_LEN);
     }
     message[0] |= temp_source_id[0]; // my ID
@@ -705,7 +705,7 @@ uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info)
     if (memcmp(temp_des_id, info->root_id, ID_LEN) == 0) // 向上转发
         memcpy(temp_next_id, info->next_id, ID_LEN);
     else // 向下转发
-        memcpy(temp_next_id, get_next_id(&my_routing_table, temp_des_id), ID_LEN);
+        memcpy(temp_next_id, get_down_routing_next_id(&my_down_routing_table, temp_des_id), ID_LEN);
     message[0] |= temp_source_id[0];
     message[1] |= temp_source_id[1];
     message[2] |= temp_next_id[0];
@@ -735,7 +735,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
     if (memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {            // message下一跳是我
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // message目的地是我
             if (info->is_root == true) {                                   // 根节点接收message并回复
-                if (routing_table_check_id(&my_routing_table, temp_info->source_id) == true) {
+                if (down_routing_table_check_id(&my_down_routing_table, temp_info->source_id) == true) {
                     ESP_LOGE(DATA_TAG, "receive message from node,responding");
                     memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
                     queue_push(&send_queue, adv_data_final_for_message, 0);

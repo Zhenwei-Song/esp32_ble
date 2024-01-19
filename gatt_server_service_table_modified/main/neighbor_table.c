@@ -22,7 +22,7 @@
 #include "ble_queue.h"
 #include "ble_timer.h"
 #include "neighbor_table.h"
-#include "routing_table.h"
+#include "down_routing_table.h"
 
 bool refresh_flag_for_neighbor = false;
 
@@ -303,7 +303,7 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     // 开始计时
                     esp_timer_start_once(ble_time3_timer, TIME3_TIMER_PERIOD);
                     timer3_running = true;
-                    destroy_routing_table(&my_routing_table); // 清空路由表
+                    destroy_down_routing_table(&my_down_routing_table); // 清空路由表
                 }
 #endif
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针

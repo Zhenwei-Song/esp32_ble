@@ -15,7 +15,7 @@
 
 // #define GPIO //GPIO相关
 // #define THROUGHPUT//吞吐量测试
-#define ROUTINGTABLE // 路由表（链表）
+#define DOWN_ROUTINGTABLE // 路由表（链表）
 #define QUEUE        // 发送、接收队列
 #define BUTTON       // 按键
 

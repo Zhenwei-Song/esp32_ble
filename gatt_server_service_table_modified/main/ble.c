@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-19 11:58:40
+ * @LastEditTime: 2024-01-19 16:25:22
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -31,11 +31,11 @@
 #ifdef QUEUE
 #include "ble_queue.h"
 #endif // QUEUE
-#ifdef ROUTINGTABLE
+#ifdef DOWN_ROUTINGTABLE
 #include "esp_mac.h"
 #include "neighbor_table.h"
-#include "routing_table.h"
-#endif // ROUTINGTABLE
+#include "down_routing_table.h"
+#endif // DOWN_ROUTINGTABLE
 #ifdef BUTTON
 #include "board.h"
 #endif
@@ -104,7 +104,7 @@ static void hello_task(void *pvParameters)
  * @param {void} *pvParameters
  * @return {*}
  */
-static void ble_routing_table_task(void *pvParameters)
+static void ble_down_routing_table_task(void *pvParameters)
 {
     while (1) {
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
@@ -135,7 +135,7 @@ static void ble_routing_table_task(void *pvParameters)
         // set_my_next_id_quality_and_distance(&my_neighbor_table, &my_information);
 #endif
         print_neighbor_table(&my_neighbor_table);
-        print_routing_table(&my_routing_table);
+        print_down_routing_table(&my_down_routing_table);
 #if 1
         if (refresh_flag_for_neighbor == true) { // 状态改变，立即发送hello
             refresh_flag_for_neighbor = false;
@@ -160,7 +160,7 @@ static void ble_routing_table_task(void *pvParameters)
         ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
         ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
 #endif
-        vTaskDelay(pdMS_TO_TICKS(REFRESH_ROUTING_TABLE_TIME));
+        vTaskDelay(pdMS_TO_TICKS(REFRESH_DOWN_ROUTING_TABLE_TIME));
     }
 }
 
@@ -502,17 +502,17 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
     }
 }
 
-#ifdef ROUTINGTABLE
-static void routing_table_init(void)
+#ifdef DOWN_ROUTINGTABLE
+static void down_routing_table_init(void)
 {
     uint8_t my_mac[6];
     init_neighbor_table(&my_neighbor_table);
     esp_read_mac(my_mac, ESP_MAC_BT);
     my_info_init(&my_information, my_mac);
 
-    init_routing_table(&my_routing_table);
+    init_down_routing_table(&my_down_routing_table);
 }
-#endif // ROUTINGTABLE
+#endif // DOWN_ROUTINGTABLE
 
 #ifdef QUEUE
 static void all_queue_init(void)
@@ -620,9 +620,9 @@ void app_main(void)
 #ifdef GPIO
     esp_gpio_init();
 #endif // GPIO
-#ifdef ROUTINGTABLE
-    routing_table_init();
-#endif // ROUTINGTABLE
+#ifdef DOWN_ROUTINGTABLE
+    down_routing_table_init();
+#endif // DOWN_ROUTINGTABLE
 #ifdef QUEUE
     all_queue_init();
 #endif // QUEUE
@@ -637,7 +637,7 @@ void app_main(void)
     // esp_ble_gap_start_advertising(&adv_params);
 
     xTaskCreate(hello_task, "hello_task", 1024, NULL, 2, NULL);
-    xTaskCreate(ble_routing_table_task, "ble_routing_table_task", 4096, NULL, 5, NULL);
+    xTaskCreate(ble_down_routing_table_task, "ble_down_routing_table_task", 4096, NULL, 5, NULL);
     xTaskCreate(ble_send_data_task, "ble_send_data_task", 2048, NULL, 3, NULL);
     xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 4, NULL);
 #ifdef BLE_TIMER

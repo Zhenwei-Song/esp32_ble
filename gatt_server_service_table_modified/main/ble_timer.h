@@ -28,7 +28,7 @@
 
 #define BLE_TIMER
 
-#define REFRESH_ROUTING_TABLE_TIME 1000 // 影响路由表的维护，定为1s
+#define REFRESH_DOWN_ROUTING_TABLE_TIME 1000 // 影响路由表的维护，定为1s
 #define ADV_TIME 20
 #define REC_TIME 10
 #define HELLO_TIME 2500

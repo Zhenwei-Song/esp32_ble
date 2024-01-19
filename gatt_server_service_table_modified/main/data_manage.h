@@ -62,8 +62,9 @@
 #define RRER_FINAL_DATA_LEN 10
 #define RRER_DATA_LEN RRER_FINAL_DATA_LEN - 2
 
-#define MESSAGE_DATA_LEN MESSAGE_FINAL_DATA_LEN - 2
 #define MESSAGE_FINAL_DATA_LEN 24
+#define MESSAGE_DATA_LEN MESSAGE_FINAL_DATA_LEN - 2
+
 
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
