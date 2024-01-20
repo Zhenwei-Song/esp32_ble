@@ -21,8 +21,9 @@
 
 #include "ble_queue.h"
 #include "ble_timer.h"
-#include "neighbor_table.h"
 #include "down_routing_table.h"
+#include "macro_def.h"
+#include "neighbor_table.h"
 
 bool refresh_flag_for_neighbor = false;
 
@@ -99,7 +100,9 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
             new_node->next = NULL;
         }
     }
+#ifdef PRINT_NEIGHBOR_TABLE_STATES
     ESP_LOGW(NEIGHBOR_TAG, "ADD NEW NEIGHBOT NOTE");
+#endif
     // print_neighbor_table(table);
     return 0;
 }
@@ -292,9 +295,11 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     info->quality[0] = NOR_NODE_INIT_QUALITY;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
-                    // refresh_flag_for_neighbor = true;
-                    //  update_my_connection_info(table, info);
+// refresh_flag_for_neighbor = true;
+//  update_my_connection_info(table, info);
+#ifdef PRINT_NEIGHBOR_TABLE_STATES
                     ESP_LOGE(NEIGHBOR_TAG, "father deleted"); // 自己的父节点无了，发送rrer
+#endif
                     memcpy(adv_data_final_for_rrer, data_match(adv_data_name_7, generate_rrer(info), HEAD_DATA_LEN, RRER_FINAL_DATA_LEN), FINAL_DATA_LEN);
                     queue_push(&send_queue, adv_data_final_for_rrer, 0);
                     vTaskDelay(pdMS_TO_TICKS(RERR_REPEAT_TIME));
@@ -309,7 +314,9 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                 p_neighbor_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
                 remove_neighbor_node_from_node(table, temp);
                 temp = next_temp; // 更新temp为下一个节点
+#ifdef PRINT_NEIGHBOR_TABLE_STATES
                 ESP_LOGW(NEIGHBOR_TAG, "neighbor table node deleted");
+#endif
             }
             else {
                 temp->count = temp->count - 1;
@@ -470,7 +477,9 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
         timer1_running = true;
+#ifdef PRINT_TIMER_STATES
         printf("between_ops timer1 started\n");
+#endif
 #endif
         // print_neighbor_table(table);
     }
@@ -512,7 +521,9 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
         // 开始计时
         esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
         timer2_running = true;
+#ifdef PRINT_TIMER_STATES
         printf("low_ops timer2 started\n");
+#endif
 
 #endif
         // print_neighbor_table(table);
@@ -588,8 +599,12 @@ void print_neighbor_table(p_neighbor_table table)
  */
 void destroy_neighbor_table(p_neighbor_table table)
 {
+#ifdef PRINT_NEIGHBOR_TABLE_STATES
     ESP_LOGW(NEIGHBOR_TAG, "Destroying neighbor_table!");
+#endif
     while (table->head != NULL)
         remove_neighbor_node_from_node(table, table->head);
+#ifdef PRINT_NEIGHBOR_TABLE_STATES
     ESP_LOGW(NEIGHBOR_TAG, "Destroying neighbor_table finished!");
+#endif
 }

@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-19 11:52:26
+ * @LastEditTime: 2024-01-19 17:27:43
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -10,12 +10,19 @@
 #include "data_manage.h"
 #include "ble_queue.h"
 #include "ble_timer.h"
-#include "esp_gap_ble_api.h"
-#include "neighbor_table.h"
 #include "down_routing_table.h"
+#include "esp_gap_ble_api.h"
+#include "macro_def.h"
+#include "neighbor_table.h"
+#include "up_routing_table.h"
 
 SemaphoreHandle_t xCountingSemaphore_send;
 SemaphoreHandle_t xCountingSemaphore_receive;
+
+uint8_t id_774a[ID_LEN] = {119, 74};
+uint8_t id_cae6[ID_LEN] = {202, 230};
+uint8_t id_eb36[ID_LEN] = {235, 54};
+uint8_t id_b50a[ID_LEN] = {181, 10};
 
 my_info my_information;
 
@@ -142,6 +149,22 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
 void my_info_init(p_my_info my_information, uint8_t *my_mac)
 {
     memcpy(my_information->my_id, my_mac + 4, ID_LEN);
+    if (memcmp(my_information->my_id, id_b50a, 2) == 0) {
+        my_information->x = X_B50A;
+        my_information->y = Y_B50A;
+    }
+    else if (memcmp(my_information->my_id, id_cae6, 2) == 0) {
+        my_information->x = X_CAE6;
+        my_information->y = Y_CAE6;
+    }
+    else if (memcmp(my_information->my_id, id_eb36, 2) == 0) {
+        my_information->x = X_EB36;
+        my_information->y = Y_EB36;
+    }
+    else if (memcmp(my_information->my_id, id_774a, 2) == 0) {
+        my_information->x = X_774A;
+        my_information->y = Y_774A;
+    }
 #ifdef SELF_ROOT
     my_information->is_root = true;
     my_information->is_connected = true;
@@ -183,6 +206,8 @@ uint8_t *generate_phello(p_my_info info)
 
     phello[1] |= info->is_connected; // 入网标志
     phello[0] |= info->moveable;     // 移动性
+    phello[2] |= info->x;            // x坐标
+    phello[3] |= info->y;            // y坐标
     phello[4] |= info->distance;     // 到root跳数
     phello[6] |= temp_quality[0];    // 链路质量
     phello[7] |= temp_quality[1];
@@ -211,6 +236,8 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     temp_info->moveable = ((temp[0] & 0x01) == 0x01 ? true : false);
     temp_info->is_root = ((temp[1] & 0x10) == 0x10 ? true : false);
     temp_info->is_connected = ((temp[1] & 0x01) == 0x01 ? true : false);
+    temp_info->x = temp[2];
+    temp_info->y = temp[3];
     temp_info->distance = temp[4];
     // temp_info->quality = temp[7];
     memcpy(temp_info->quality, temp + 6, QUALITY_LEN);
@@ -376,26 +403,32 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
     /*                                  开始转发到root                                 */
     /* -------------------------------------------------------------------------- */
     if (info->is_root) {                                                                                                                                                   // 根节点 回复hsrrep
-        insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);                                          // 把它加入到自己的路由表里
+        insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1);                                // 把它加入到自己的路由表里
         memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_hsrrep(info, temp_info->source_id), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN); // 发送入网请求的节点成了根节点发送入网请求回复包的目的节点
         queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
         xSemaphoreGive(xCountingSemaphore_send);
+#ifdef PRINT_CONTROL_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "response hsrrep");
+#endif // PRINT_CONTROL_PACKAGES_STATES
     }
     else {
-        if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {                                             // 由自己中转，开始转发
+        if (info->is_connected && memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {                                                       // 由自己中转，开始转发
             insert_down_routing_node(&my_down_routing_table, info->root_id, temp_info->source_id, temp_info->node_id, temp_info->distance + 1); // 把它加入到自己的路由表里，自己成了它的父节点（父节点的选择由子节点根据链路质量确定）
             // TODO:未考虑路由表的维护
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_transfer_anhsp(temp_info, info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
             xSemaphoreGive(xCountingSemaphore_send);
-            ESP_LOGE(DATA_TAG, "transer anhsp");
+#ifdef PRINT_CONTROL_PACKAGES_STATES
+            ESP_LOGE(DATA_TAG, "transfer anhsp");
+#endif // PRINT_CONTROL_PACKAGES_STATES
             temp_info->distance = temp_info->distance + 1;
             /// insert_down_routing_node(&my_down_routing_table, temp_info->source_id, temp_info->last_root_id, temp_info->node_id, temp_info->distance); // 记录入路由表，用于反向路由
             // print_down_routing_table(&my_down_routing_table);
         }
         else { // 不是由自己中转，不处理
+#ifdef PRINT_CONTROL_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "get anhsp,but not transfer");
+#endif // PRINT_CONTROL_PACKAGES_STATES
         }
     }
 }
@@ -477,11 +510,16 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // 收到根节点发给我的hsrrep
             if (timer1_running == true && timer1_timeout == false) {       // 仅接收timer1未超时接收的回复包
                 esp_timer_stop(ble_time1_timer);                           // 定时停止
+#ifdef PRINT_TIMER_STATES
                 printf("hsrrep timer1 stopped\n");
+#endif // PRINT_TIMER_STATES
                 timer1_running = false;
                 info->is_connected |= true;
                 info->distance = temp_info->distance + 1;
+                insert_up_routing_node(&my_up_routing_table, info->root_id, temp_info->node_id, info->distance);
+#ifdef PRINT_CONTROL_PACKAGES_STATES
                 ESP_LOGE(DATA_TAG, "receive hsrrep");
+#endif // PRINT_CONTROL_PACKAGES_STATES
             }
         }
         else {                                // 不是发给我的hsrrep（但是我是入网请求节点和根节点入网路径上的节点）
@@ -490,12 +528,16 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
                 memcpy(adv_data_final_for_hsrrep, data_match(adv_data_name_7, generate_transfer_hsrrep(temp_info, info), HEAD_DATA_LEN, HSRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
                 queue_push(&send_queue, adv_data_final_for_hsrrep, 0);
                 xSemaphoreGive(xCountingSemaphore_send);
+#ifdef PRINT_CONTROL_PACKAGES_STATES
                 ESP_LOGE(DATA_TAG, "transfer hsrrep");
+#endif // PRINT_CONTROL_PACKAGES_STATES
             }
         }
     }
     else {
+#ifdef PRINT_CONTROL_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "hsrrep next id is not me,do nothing");
+#endif // PRINT_CONTROL_PACKAGES_STATES
     }
 }
 
@@ -542,7 +584,9 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info)
             memcpy(adv_data_final_for_anrrep, data_match(adv_data_name_7, generate_anrrep(info, temp_info->source_id), HEAD_DATA_LEN, ANRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anrrep, 0);
             xSemaphoreGive(xCountingSemaphore_send);
+#ifdef PRINT_CONTROL_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "send anrrep");
+#endif // PRINT_CONTROL_PACKAGES_STATES
         }
     }
 }
@@ -588,16 +632,22 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
     if (memcmp(info->my_id, temp_info->destination_id, ID_LEN) == 0 && memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是发回给我的入网请求回复包,且是我认定的父节点（low_ops中根据链路质量最优选择的）
         if (timer2_running == true && timer2_timeout == false) {                                                                 // 不处理超时后收到的anrrep
             esp_timer_stop(ble_time2_timer);
+#ifdef PRINT_TIMER_STATES
             printf("anrrep timer2 stopped\n");
-            timer2_running = false;               // 定时停止
+#endif                              // PRINT_TIMER_STATES
+            timer2_running = false; // 定时停止
+#ifdef PRINT_CONTROL_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "receive anrrep"); // 收到anrrep，开始向root发送入网请求
+#endif                                            // PRINT_CONTROL_PACKAGES_STATES
             memcpy(adv_data_final_for_anhsp, data_match(adv_data_name_7, generate_anhsp(info), HEAD_DATA_LEN, ANHSP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
             xSemaphoreGive(xCountingSemaphore_send);
             // 开始计时
             esp_timer_start_once(ble_time1_timer, TIME1_TIMER_PERIOD);
             timer1_running = true;
+#ifdef PRINT_TIMER_STATES
             printf("anrrep timer1 started\n");
+#endif // PRINT_TIMER_STATES
         }
     }
 }
@@ -619,7 +669,9 @@ uint8_t *generate_rrer(p_my_info info)
     rrer[4] |= temp_des_id[0];
     rrer[5] |= temp_des_id[1];
     memcpy(rrer_final + 2, rrer, RRER_DATA_LEN);
+#ifdef PRINT_CONTROL_PACKAGES_STATES
     ESP_LOGE(DATA_TAG, "send rrer");
+#endif // PRINT_CONTROL_PACKAGES_STATES
     return rrer_final;
 }
 
@@ -637,7 +689,9 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
     memcpy(temp_info->node_id, temp + 2, ID_LEN);
     memcpy(temp_info->destination_id, temp + 4, ID_LEN);
     if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
+#ifdef PRINT_CONTROL_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "receive rrer");
+        #endif // PRINT_CONTROL_PACKAGES_STATES
         info->is_connected = false;
         info->distance = NOR_NODE_INIT_DISTANCE;
         info->quality[0] = NOR_NODE_INIT_QUALITY;
@@ -736,27 +790,37 @@ void resolve_message(uint8_t *message_data, p_my_info info)
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // message目的地是我
             if (info->is_root == true) {                                   // 根节点接收message并回复
                 if (down_routing_table_check_id(&my_down_routing_table, temp_info->source_id) == true) {
+#ifdef PRINT_MASSAGE_PACKAGES_STATES
                     ESP_LOGE(DATA_TAG, "receive message from node,responding");
+#endif // PRINT_MASSAGE_PACKAGES_STATES
                     memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
                     queue_push(&send_queue, adv_data_final_for_message, 0);
                     xSemaphoreGive(xCountingSemaphore_send);
                 }
                 else {
+#ifdef PRINT_MASSAGE_PACKAGES_STATES
                     ESP_LOGE(DATA_TAG, "receive message from node,but source is unknown,not responding");
+#endif // PRINT_MASSAGE_PACKAGES_STATES
                 }
             }
             else { // 接收到根节点发回的message
+#ifdef PRINT_MASSAGE_PACKAGES_STATES
                 ESP_LOGE(DATA_TAG, "receive message from root");
+#endif // PRINT_MASSAGE_PACKAGES_STATES
             }
         }
         else { // message的目的地不是我，但是由我转发
+#ifdef PRINT_MASSAGE_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "receive message,transfering");
+#endif // PRINT_MASSAGE_PACKAGES_STATES
             memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_transfer_message(temp_info, info), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_message, 0);
             xSemaphoreGive(xCountingSemaphore_send);
         }
     }
     else { // message下一跳不是我,且不由我转发
+#ifdef PRINT_MASSAGE_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "receive message,but not transfer");
+#endif // PRINT_MASSAGE_PACKAGES_STATES
     }
 }

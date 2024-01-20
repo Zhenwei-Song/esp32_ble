@@ -26,8 +26,6 @@
 #include "esp_timer.h"
 #include "freertos/projdefs.h"
 
-#define BLE_TIMER
-
 #define REFRESH_DOWN_ROUTING_TABLE_TIME 1000 // 影响路由表的维护，定为1s
 #define ADV_TIME 20
 #define REC_TIME 10

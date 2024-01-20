@@ -22,9 +22,19 @@
 
 #include "esp_log.h"
 
-//#define SELF_ROOT
-
 #define DATA_TAG "DATA"
+
+#define X_B50A 0
+#define Y_B50A 0
+
+#define X_CAE6 4
+#define Y_CAE6 0
+
+#define X_EB36 8
+#define Y_EB36 0
+
+#define X_774A 0
+#define Y_774A 4
 
 #define NOR_NODE_INIT_QUALITY 0
 #define NOR_NODE_INIT_DISTANCE 100
@@ -65,15 +75,21 @@
 #define MESSAGE_FINAL_DATA_LEN 24
 #define MESSAGE_DATA_LEN MESSAGE_FINAL_DATA_LEN - 2
 
-
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
+
+extern uint8_t id_774a[ID_LEN];
+extern uint8_t id_cae6[ID_LEN];
+extern uint8_t id_eb36[ID_LEN];
+extern uint8_t id_b50a[ID_LEN];
 
 typedef struct my_info {
     bool moveable;
     bool is_root;
     bool ready_to_connect;
     bool is_connected;
+    uint8_t x;
+    uint8_t y;
     uint8_t distance;
     uint8_t quality[QUALITY_LEN];
     uint8_t my_id[ID_LEN];
@@ -87,6 +103,8 @@ typedef struct phello_info {
     bool moveable;
     bool is_root;
     bool is_connected;
+    uint8_t x;
+    uint8_t y;
     uint8_t distance;
     // uint8_t quality[QUALITY_LEN];
     uint8_t quality[QUALITY_LEN];

@@ -1,4 +1,5 @@
 #include "ble_timer.h"
+#include "macro_def.h"
 
 esp_timer_handle_t ble_time1_timer;
 esp_timer_handle_t ble_time2_timer;
@@ -53,7 +54,9 @@ void time1_timer_cb(void)
     timer1_timeout = true;
     timer1_running = false;
     xSemaphoreGive(xCountingSemaphore_timeout1);
+#ifdef PRINT_TIMER_STATES
     printf("time1_timeout\n");
+#endif
 }
 
 /**
@@ -65,7 +68,9 @@ void time2_timer_cb(void)
     timer2_timeout = true;
     timer2_running = false;
     xSemaphoreGive(xCountingSemaphore_timeout2);
+#ifdef PRINT_TIMER_STATES
     printf("time2_timeout\n");
+#endif
 }
 
 /**
@@ -75,7 +80,9 @@ void time2_timer_cb(void)
 void time3_timer_cb(void)
 {
     timer3_running = false;
+#ifdef PRINT_TIMER_STATES
     printf("time3_timeout\n");
+#endif
 }
 
 /**
@@ -85,5 +92,7 @@ void time3_timer_cb(void)
 void time4_timer_cb(void)
 {
     entry_network_flag = true;
+#ifdef PRINT_TIMER_STATES
     printf("time4_timeout\n");
+    #endif
 }

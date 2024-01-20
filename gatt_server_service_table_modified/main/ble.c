@@ -1,8 +1,17 @@
 /*
  * @Author: Zhenwei Song zhenwei.song@qq.com
+ * @Date: 2023-12-05 17:18:06
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-20 09:53:10
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
+ * @Description: 仅供学习交流使用
+ * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
+ */
+/*
+ * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-19 16:25:22
+ * @LastEditTime: 2024-01-20 09:17:38
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -24,6 +33,7 @@
  */
 
 #include "ble.h"
+#include "macro_def.h"
 
 #ifdef GPIO
 #include "driver/gpio.h"
@@ -32,17 +42,17 @@
 #include "ble_queue.h"
 #endif // QUEUE
 #ifdef DOWN_ROUTINGTABLE
+#include "down_routing_table.h"
 #include "esp_mac.h"
 #include "neighbor_table.h"
-#include "down_routing_table.h"
+#include "up_routing_table.h"
 #endif // DOWN_ROUTINGTABLE
 #ifdef BUTTON
 #include "board.h"
 #endif
 
-#include "data_manage.h"
-
 #include "ble_timer.h"
+#include "data_manage.h"
 // 181 B5
 // 10  0A
 
@@ -52,19 +62,14 @@
 // 202 CA
 // 230 E6
 
-// 119 77(ROOT)
+// 119 77
 // 74 4A
 
-#define FILTER
-
 #ifdef FILTER
-#define FILTERED_ID_H 119
-#define FILTERED_ID_L 75
-static uint8_t filtered_id[ID_LEN] = {FILTERED_ID_H, FILTERED_ID_L};
-static uint8_t filtered_id_774a[ID_LEN] = {119, 74};
-static uint8_t filtered_id_cae6[ID_LEN] = {202, 230};
-static uint8_t filtered_id_eb36[ID_LEN] = {235, 54};
-static uint8_t filtered_id_b50a[ID_LEN] = {181, 10};
+// #define FILTERED_ID_H 119
+// #define FILTERED_ID_L 75
+// static uint8_t filtered_id[ID_LEN] = {FILTERED_ID_H, FILTERED_ID_L};
+
 #endif // FILTER
 
 #ifdef GPIO
@@ -113,20 +118,26 @@ static void ble_down_routing_table_task(void *pvParameters)
         if ((timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false && my_information.is_connected == false) || (timer3_running == false && entry_network_flag == true && my_information.is_connected == true)) { // 路由错误后等待一段时间后才进行路由发现
             entry_network_flag = false;
             if (threshold_high_flag == true) {
+#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
                 ESP_LOGE(DATA_TAG, "threshold_high_flag");
+#endif
                 threshold_high_ops(&my_neighbor_table, &my_information);
             }
             else if (threshold_low_flag == true) {
+#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
                 ESP_LOGE(DATA_TAG, "threshold_between_flag");
+#endif
                 if (timer1_running == false) {
-                    ESP_LOGE(DATA_TAG, "threshold_between_ops");
+                    // ESP_LOGE(DATA_TAG, "threshold_between_ops");
                     threshold_between_ops(&my_neighbor_table, &my_information);
                 }
             }
             else {
+#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
                 ESP_LOGE(DATA_TAG, "threshold_low_flag");
+#endif
                 if (timer2_running == false) {
-                    ESP_LOGE(DATA_TAG, "threshold_low_ops");
+                    // ESP_LOGE(DATA_TAG, "threshold_low_ops");
                     threshold_low_ops(&my_neighbor_table, &my_information);
                 }
             }
@@ -134,8 +145,17 @@ static void ble_down_routing_table_task(void *pvParameters)
 
         // set_my_next_id_quality_and_distance(&my_neighbor_table, &my_information);
 #endif
+#ifdef PRINT_NEIGHBOR_TABLE
         print_neighbor_table(&my_neighbor_table);
+#endif // PRINT_NEIGHBOR_TABLE
+#ifdef PRINT_UP_ROUTING_TABLE
+#ifdef SELF_ROOT
+        print_up_routing_table(&my_up_routing_table);
+#endif
+#endif // PRINT_UP_ROUTING_TABLE
+#ifdef PRINT_DOWN_ROUTING_TABLE
         print_down_routing_table(&my_down_routing_table);
+#endif // PRINT_DOWN_ROUTING_TABLE
 #if 1
         if (refresh_flag_for_neighbor == true) { // 状态改变，立即发送hello
             refresh_flag_for_neighbor = false;
@@ -144,7 +164,7 @@ static void ble_down_routing_table_task(void *pvParameters)
             xSemaphoreGive(xCountingSemaphore_send);
         }
 #endif
-#if 1
+#ifdef PRINT_MY_INFO
         ESP_LOGW(DATA_TAG, "****************************Start printing my info:***********************************************");
         ESP_LOGI(DATA_TAG, "my_id:");
         esp_log_buffer_hex(DATA_TAG, my_information.my_id, ID_LEN);
@@ -159,7 +179,7 @@ static void ble_down_routing_table_task(void *pvParameters)
         esp_log_buffer_hex(DATA_TAG, my_information.quality, QUALITY_LEN);
         ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
         ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
-#endif
+#endif // PRINT_MY_INFO
         vTaskDelay(pdMS_TO_TICKS(REFRESH_DOWN_ROUTING_TABLE_TIME));
     }
 }
@@ -203,38 +223,52 @@ static void ble_rec_data_task(void *pvParameters)
                     // esp_log_buffer_hex(TAG, rec_data, 31);
                     if (phello != NULL) {
                         resolve_phello(phello, &my_information, temp_rssi);
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
                         ESP_LOGI(TAG, "PHELLO_DATA:");
                         esp_log_buffer_hex(TAG, phello, phello_len);
-                        ESP_LOGE(TAG, "rssi:%d", temp_rssi);
+#endif
+                        // ESP_LOGE(TAG, "rssi:%d", temp_rssi);
                     }
                     if (anhsp != NULL) {
-                        ESP_LOGE(TAG, "ANHSP_DATA:");
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "ANHSP_DATA:");
                         esp_log_buffer_hex(TAG, anhsp, anhsp_len);
+#endif
                         resolve_anhsp(anhsp, &my_information);
                     }
                     if (hsrrep != NULL) {
-                        ESP_LOGE(TAG, "HSRREP_DATA:");
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "HSRREP_DATA:");
                         esp_log_buffer_hex(TAG, hsrrep, hsrrep_len);
+#endif
                         resolve_hsrrep(hsrrep, &my_information);
                     }
                     if (anrreq != NULL) {
-                        ESP_LOGE(TAG, "ANRREQ_DATA:");
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "ANRREQ_DATA:");
                         esp_log_buffer_hex(TAG, anrreq, anrreq_len);
+#endif
                         resolve_anrreq(anrreq, &my_information);
                     }
                     if (anrrep != NULL) {
-                        ESP_LOGE(TAG, "ANRREP_DATA:");
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "ANRREP_DATA:");
                         esp_log_buffer_hex(TAG, anrrep, anrrep_len);
+#endif
                         resolve_anrrep(anrrep, &my_information);
                     }
                     if (rrer != NULL) {
-                        ESP_LOGE(TAG, "RRER_DATA:");
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "RRER_DATA:");
                         esp_log_buffer_hex(TAG, rrer, rrer_len);
+#endif
                         resolve_rrer(rrer, &my_information);
                     }
                     if (message != NULL) {
-                        ESP_LOGE(TAG, "MESSAGE_DATA:");
+#ifdef PRINT_MESSAGE_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "MESSAGE_DATA:");
                         esp_log_buffer_hex(TAG, message, message_len);
+#endif
                         resolve_message(message, &my_information);
                     }
                     free(rec_data);
@@ -296,7 +330,9 @@ static void ble_timer1_check_task(void *pvParameters)
             // 开始计时
             esp_timer_start_once(ble_time2_timer, TIME2_TIMER_PERIOD);
             timer2_running = true;
+#ifdef PRINT_TIMER_STATES
             printf("timer1 timeout ,timer2 started\n");
+#endif
             timer1_timeout = false;
         }
     }
@@ -313,7 +349,9 @@ static void ble_timer2_check_task(void *pvParameters)
         if (xSemaphoreTake(xCountingSemaphore_timeout2, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
             timer2_timeout = false; // 一切重置，回到最初，重新在三个阈值中选择
+#ifdef PRINT_TIMER_STATES
             printf("timer2 timeout ,restart\n");
+#endif
         }
     }
 }
@@ -376,7 +414,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
         /* advertising start complete event to indicate advertising start successfully or failed */
         if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGE(TAG, "Advertising start failed");
+#endif
         }
         else {
             // esp_ble_gap_start_scanning(duration);
@@ -390,10 +430,14 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 
     case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
         if (param->adv_stop_cmpl.status != ESP_BT_STATUS_SUCCESS) {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGE(TAG, "Advertising stop failed");
+#endif
         }
         else {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGI(TAG, "Stop adv successfully");
+#endif
 #ifdef GPIO
             gpio_set_level(GPIO_OUTPUT_IO_0, 1);
             esp_ble_gap_start_advertising(&adv_params);
@@ -404,20 +448,28 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
     case ESP_GAP_BLE_SCAN_START_COMPLETE_EVT:
         // scan start complete event to indicate scan start successfully or failed
         if (param->scan_start_cmpl.status != ESP_BT_STATUS_SUCCESS) {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGE(TAG, "Scan start failed");
+#endif
         }
         else {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGI(TAG, "Scan start successfully");
+#endif
         }
         break;
 
     case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
         if (param->scan_stop_cmpl.status != ESP_BT_STATUS_SUCCESS) {
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGE(TAG, "Scan stop failed");
+#endif
         }
         else {
             // esp_ble_gap_start_advertising(&adv_params);
+#ifdef PRINT_GAP_EVENT_STATES
             ESP_LOGI(TAG, "Stop scan successfully\n");
+#endif
         }
         break;
     case ESP_GAP_BLE_SCAN_RESULT_EVT: { // 表示已经扫描到BLE设备的广播数据
@@ -448,25 +500,25 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 #ifndef THROUGHPUT
                     // ESP_LOGW(TAG, "%s is found", remote_device_name);
 #ifdef FILTER
-                    if (memcmp(my_information.my_id, filtered_id_b50a, 2) == 0) {
-                        if (memcmp(filtered_id_eb36, scan_result->scan_rst.bda + 4, 2) == 0 ||
-                            memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                    if (memcmp(my_information.my_id, id_b50a, 2) == 0) {
+                        if (memcmp(id_eb36, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                            memcmp(id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }
-                    else if (memcmp(my_information.my_id, filtered_id_cae6, 2) == 0) {
-                        if (memcmp(filtered_id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                    else if (memcmp(my_information.my_id, id_cae6, 2) == 0) {
+                        if (memcmp(id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }
-                    else if (memcmp(my_information.my_id, filtered_id_eb36, 2) == 0) {
-                        if (memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                    else if (memcmp(my_information.my_id, id_eb36, 2) == 0) {
+                        if (memcmp(id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }
-                    else if (memcmp(my_information.my_id, filtered_id_774a, 2) == 0) {
-                        if (memcmp(filtered_id_b50a, scan_result->scan_rst.bda + 4, 2) == 0 ||
-                            memcmp(filtered_id_cae6, scan_result->scan_rst.bda + 4, 2) == 0) {
+                    else if (memcmp(my_information.my_id, id_774a, 2) == 0) {
+                        if (memcmp(id_b50a, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                            memcmp(id_cae6, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }

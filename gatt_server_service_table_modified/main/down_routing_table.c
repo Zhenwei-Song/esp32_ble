@@ -12,6 +12,7 @@
 
 #include "ble_queue.h"
 #include "down_routing_table.h"
+#include "macro_def.h"
 
 bool refresh_flag_for_down_routing = false;
 
@@ -78,7 +79,9 @@ int insert_down_routing_node(p_down_routing_table table, uint8_t *source_id, uin
             new_node->next = NULL;
         }
     }
+#ifdef PRINT_DOWN_ROUTING_TABLE_STATES
     ESP_LOGW(DOWN_ROUTING_TAG, "ADD NEW DOWN_ROUTING NOTE");
+#endif
     // print_down_routing_table(table);
     return 0;
 }
@@ -194,7 +197,9 @@ void refresh_cnt_down_routing_table(p_down_routing_table table, p_my_info info)
                 p_down_routing_note next_temp = temp->next; // 保存下一个节点以防止删除后丢失指针
                 remove_down_routing_node_from_node(table, temp);
                 temp = next_temp; // 更新temp为下一个节点
+#ifdef PRINT_DOWN_ROUTING_TABLE_STATES
                 ESP_LOGW(DOWN_ROUTING_TAG, "down_routing table node deleted");
+#endif
             }
             else {
                 temp->count = temp->count - 1;
@@ -255,8 +260,12 @@ void print_down_routing_table(p_down_routing_table table)
  */
 void destroy_down_routing_table(p_down_routing_table table)
 {
+#ifdef PRINT_DOWN_ROUTING_TABLE_STATES
     ESP_LOGW(DOWN_ROUTING_TAG, "Destroying down_routing_table!");
+#endif
     while (table->head != NULL)
         remove_down_routing_node_from_node(table, table->head);
+#ifdef PRINT_DOWN_ROUTING_TABLE_STATES
     ESP_LOGW(DOWN_ROUTING_TAG, "Destroying down_routing_table finished!");
+#endif
 }

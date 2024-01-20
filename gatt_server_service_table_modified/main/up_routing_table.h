@@ -23,9 +23,8 @@
 #define UP_ROUTING_TABLE_COUNT 10
 
 typedef struct up_routing_note {
-    uint8_t source_id[ID_LEN];
     uint8_t destination_id[ID_LEN];
-    uint8_t reverse_next_id[ID_LEN];
+    uint8_t next_id[ID_LEN];
     uint8_t distance_from_me;
     uint8_t count;
     struct up_routing_note *next;
@@ -40,7 +39,7 @@ extern up_routing_table my_up_routing_table;
 void init_up_routing_table(p_up_routing_table table);
 
 // int insert_up_routing_node(p_up_routing_table table, p_up_routing_note new_up_routing);
-int insert_up_routing_node(p_up_routing_table table, uint8_t *source_id, uint8_t *destination_id, uint8_t *reverse_next_id, uint8_t distance_from_me);
+int insert_up_routing_node(p_up_routing_table table, uint8_t *destination_id, uint8_t *next_id, uint8_t distance_from_me);
 
 void remove_up_routing_node_from_node(p_up_routing_table table, p_up_routing_note old_up_routing);
 
