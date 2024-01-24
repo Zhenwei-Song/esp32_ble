@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 11:30:06
+ * @LastEditTime: 2024-01-23 20:45:23
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -24,6 +24,8 @@
 
 #define DATA_TAG "DATA"
 
+#define BACKGROUND_NOISE -70
+
 #define X_B50A 0
 #define Y_B50A 0
 
@@ -33,7 +35,7 @@
 #define X_EB36 8
 #define Y_EB36 0
 
-#define X_774A 0
+#define X_774A 4
 #define Y_774A 4
 
 #define NOR_NODE_INIT_QUALITY 0
@@ -46,6 +48,7 @@
 #define QUALITY_LEN 2
 #define THRESHOLD_LEN 2
 #define SERIAL_NUM_LEN 2
+#define SENSOR_LEN 1
 #define USEFUL_MESSAGE_LEN 16
 
 #define HEAD_DATA_LEN 7
@@ -74,6 +77,9 @@
 
 #define MESSAGE_FINAL_DATA_LEN 24
 #define MESSAGE_DATA_LEN MESSAGE_FINAL_DATA_LEN - 2
+
+#define BLOCK_MESSAGE_FINAL_DATA_LEN 10
+#define BLOCK_MESSAGE_DATA_LEN BLOCK_MESSAGE_FINAL_DATA_LEN - 2
 
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
@@ -126,6 +132,7 @@ typedef struct anhsp_info {
 
 typedef struct hsrrep_info {
     uint8_t distance;
+    uint8_t quality[QUALITY_LEN];
     uint8_t node_id[ID_LEN];
     uint8_t destination_id[ID_LEN];
     uint8_t reverse_next_id[ID_LEN];
@@ -156,7 +163,17 @@ typedef struct message_info {
     uint8_t next_id[ID_LEN];
     uint8_t destination_id[ID_LEN];
     uint8_t useful_message[USEFUL_MESSAGE_LEN];
+    uint8_t temperature[SENSOR_LEN];
+    uint8_t humidity[SENSOR_LEN];
+    uint8_t infrared[SENSOR_LEN];
+    uint8_t illumination[SENSOR_LEN];
+    uint8_t smoke[SENSOR_LEN];
 } message_info, *p_message_info;
+
+typedef struct block_message_info {
+    uint8_t node_id[ID_LEN];
+    uint8_t destination_id[ID_LEN];
+} block_message_info, *p_block_message_info;
 
 extern my_info my_information;
 
@@ -181,6 +198,8 @@ extern uint8_t adv_data_final_for_anrreq[FINAL_DATA_LEN];
 extern uint8_t adv_data_final_for_rrer[FINAL_DATA_LEN];
 
 extern uint8_t adv_data_final_for_message[FINAL_DATA_LEN];
+
+extern uint8_t adv_data_final_for_block_message[FINAL_DATA_LEN];
 
 extern uint8_t adv_data_message_16[MESSAGE_DATA_LEN - 6];
 // 31字节数据
@@ -227,4 +246,8 @@ uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id
 uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info);
 
 void resolve_message(uint8_t *message_data, p_my_info info);
+
+uint8_t *generate_block_message(p_my_info info);
+
+void resolve_block_message(uint8_t *block_message_data, p_my_info info);
 #endif // _DATA_H_

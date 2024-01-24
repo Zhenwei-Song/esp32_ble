@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2024-01-16 15:05:23
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 11:14:09
+ * @LastEditTime: 2024-01-23 19:37:28
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble_timer.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -28,8 +28,9 @@
 
 #define REFRESH_DOWN_ROUTING_TABLE_TIME 1000 // 影响路由表的维护，定为1s
 #define ADV_TIME 20
-#define REC_TIME 10
-#define HELLO_TIME 2500
+#define REC_TIME 0
+#define HELLO_TIME 5000
+#define MESSAGE_TIME 5000
 #define RESET_TIMER1_TIMEOUT_TIME 1000
 #define RESET_TIMER2_TIMEOUT_TIME 1000
 #define RERR_REPEAT_TIME 1000
@@ -67,5 +68,7 @@ void time2_timer_cb(void);
 void time3_timer_cb(void);
 
 void time4_timer_cb(void);
+
+void time5_timer_cb(void);
 
 #endif

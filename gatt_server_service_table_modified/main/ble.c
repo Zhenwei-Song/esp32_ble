@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-20 09:53:10
+ * @LastEditTime: 2024-01-23 19:04:29
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -44,7 +44,7 @@
 #ifdef DOWN_ROUTINGTABLE
 #include "down_routing_table.h"
 #include "esp_mac.h"
-#include "neighbor_table.h"
+#include "neighbor_table.h" l
 #include "up_routing_table.h"
 #endif // DOWN_ROUTINGTABLE
 #ifdef BUTTON
@@ -104,6 +104,34 @@ static void hello_task(void *pvParameters)
     }
 }
 
+static void message_task(void *pvParameters)
+{
+#if 0
+    uint8_t temp_message[MESSAGE_FINAL_DATA_LEN] = {0};
+    memcpy(temp_message, generate_message(adv_data_message_16, &my_information, NULL), MESSAGE_FINAL_DATA_LEN);
+    int i = 0;
+    while (1) {
+        temp_message[23] = i;
+        memcpy(adv_data_final_for_message, data_match(adv_data_name_7, temp_message, HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+        queue_push(&send_queue, adv_data_final_for_message, 0);
+        xSemaphoreGive(xCountingSemaphore_send);
+        i++;
+        if (i == 15)
+            i = 0;
+        vTaskDelay(pdMS_TO_TICKS(MESSAGE_TIME));
+    }
+#else
+    while (1) {
+        if (my_information.is_connected == true) {
+            memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_message_16, &my_information, NULL), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+            queue_push(&send_queue, adv_data_final_for_message, 0);
+            xSemaphoreGive(xCountingSemaphore_send);
+            vTaskDelay(pdMS_TO_TICKS(MESSAGE_TIME));
+        }
+    }
+#endif
+}
+
 /**
  * @description: 刷新邻居表，更新链路质量，进行路由发现
  * @param {void} *pvParameters
@@ -149,7 +177,7 @@ static void ble_down_routing_table_task(void *pvParameters)
         print_neighbor_table(&my_neighbor_table);
 #endif // PRINT_NEIGHBOR_TABLE
 #ifdef PRINT_UP_ROUTING_TABLE
-#ifdef SELF_ROOT
+#ifndef SELF_ROOT
         print_up_routing_table(&my_up_routing_table);
 #endif
 #endif // PRINT_UP_ROUTING_TABLE
@@ -198,6 +226,7 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t *anrrep = NULL;
     uint8_t *rrer = NULL;
     uint8_t *message = NULL;
+    uint8_t *block = NULL;
     uint8_t *rec_data = NULL;
     uint8_t phello_len = 0;
     uint8_t anhsp_len = 0;
@@ -206,6 +235,7 @@ static void ble_rec_data_task(void *pvParameters)
     uint8_t anrrep_len = 0;
     uint8_t rrer_len = 0;
     uint8_t message_len = 0;
+    uint8_t block_len = 0;
     while (1) {
         if (xSemaphoreTake(xCountingSemaphore_receive, portMAX_DELAY) == pdTRUE) // 得到了信号量
         {
@@ -219,6 +249,7 @@ static void ble_rec_data_task(void *pvParameters)
                     anrrep = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_ANRREP, &anrrep_len);
                     rrer = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_RRER, &rrer_len);
                     message = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_MESSAGE, &message_len);
+                    block = esp_ble_resolve_adv_data(rec_data, ESP_BLE_AD_TYPE_BLOCK, &block_len);
                     // ESP_LOGI(TAG, "ADV_DATA:");
                     // esp_log_buffer_hex(TAG, rec_data, 31);
                     if (phello != NULL) {
@@ -271,10 +302,17 @@ static void ble_rec_data_task(void *pvParameters)
 #endif
                         resolve_message(message, &my_information);
                     }
+                    if (block != NULL) {
+#ifdef PRINT_CONTROL_PACKAGES_RECEIVED
+                        ESP_LOGI(TAG, "BLOCK_DATA:");
+                        esp_log_buffer_hex(TAG, block, block_len);
+#endif
+                        resolve_block_message(block, &my_information);
+                    }
                     free(rec_data);
                 }
             }
-            // vTaskDelay(pdMS_TO_TICKS(REC_TIME));
+            vTaskDelay(pdMS_TO_TICKS(REC_TIME));
         }
     }
 }
@@ -310,6 +348,7 @@ static void ble_send_data_task(void *pvParameters)
                 }
             }
         }
+        vTaskDelay(pdMS_TO_TICKS(ADV_TIME));
 #endif
     }
 }
@@ -582,10 +621,18 @@ static void all_queue_init(void)
  */
 void button_ops()
 {
+#ifdef BUTTON_MY_MESSAGE
     ESP_LOGE(DATA_TAG, "SENDING MY MESSAGE");
     memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_message_16, &my_information, NULL), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
     queue_push(&send_queue, adv_data_final_for_message, 0);
     xSemaphoreGive(xCountingSemaphore_send);
+#endif
+#ifdef BUTTON_BLOCK_MESSAGE
+    // ESP_LOGE(DATA_TAG, "SENDING BLOCK MESSAGE");
+    memcpy(adv_data_final_for_block_message, data_match(adv_data_name_7, generate_block_message(&my_information), HEAD_DATA_LEN, BLOCK_MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
+    queue_push(&send_queue, adv_data_final_for_block_message, 0);
+    xSemaphoreGive(xCountingSemaphore_send);
+#endif
 }
 #else
 void button_ops()
@@ -689,6 +736,11 @@ void app_main(void)
     // esp_ble_gap_start_advertising(&adv_params);
 
     xTaskCreate(hello_task, "hello_task", 1024, NULL, 2, NULL);
+#ifndef SELF_ROOT
+#ifdef SENGDING_MESSAGE_PERIODIC
+    xTaskCreate(message_task, "message_task", 1024, NULL, 2, NULL);
+#endif
+#endif
     xTaskCreate(ble_down_routing_table_task, "ble_down_routing_table_task", 4096, NULL, 5, NULL);
     xTaskCreate(ble_send_data_task, "ble_send_data_task", 2048, NULL, 3, NULL);
     xTaskCreate(ble_rec_data_task, "ble_rec_data_task", 4096, NULL, 4, NULL);
@@ -697,7 +749,7 @@ void app_main(void)
     xTaskCreate(ble_timer2_check_task, "ble_timer2_check_task", 1024, NULL, 4, NULL);
     ble_timer_init();
 #ifndef SELF_ROOT
-    esp_timer_start_periodic(ble_time4_timer, TIME3_TIMER_PERIOD);
+    // esp_timer_start_periodic(ble_time4_timer, TIME3_TIMER_PERIOD);
 #endif
 #endif
 

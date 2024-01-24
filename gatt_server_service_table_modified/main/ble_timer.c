@@ -1,3 +1,12 @@
+/*
+ * @Author: Zhenwei Song zhenwei.song@qq.com
+ * @Date: 2024-01-16 15:05:32
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-22 20:02:32
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble_timer.c
+ * @Description: 仅供学习交流使用
+ * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
+ */
 #include "ble_timer.h"
 #include "macro_def.h"
 
@@ -5,6 +14,7 @@ esp_timer_handle_t ble_time1_timer;
 esp_timer_handle_t ble_time2_timer;
 esp_timer_handle_t ble_time3_timer;
 esp_timer_handle_t ble_time4_timer;
+esp_timer_handle_t ble_time5_timer;
 
 bool timer1_timeout = false;
 bool timer2_timeout = false;
@@ -43,6 +53,11 @@ void ble_timer_init(void)
         .callback = &time4_timer_cb,
         .name = "timer4"}; // 定时器名字
     ESP_ERROR_CHECK(esp_timer_create(&time4_timer_args, &ble_time4_timer));
+
+    const esp_timer_create_args_t time5_timer_args = {
+        .callback = &time5_timer_cb,
+        .name = "timer5"}; // 定时器名字
+    ESP_ERROR_CHECK(esp_timer_create(&time5_timer_args, &ble_time5_timer));
 }
 
 /**
@@ -94,5 +109,16 @@ void time4_timer_cb(void)
     entry_network_flag = true;
 #ifdef PRINT_TIMER_STATES
     printf("time4_timeout\n");
-    #endif
+#endif
+}
+
+/**
+ * @description: timer5超时函数，用于定时发送传感数据
+ * @return {*}
+ */
+void time5_timer_cb(void)
+{
+#ifdef PRINT_TIMER_STATES
+    printf("time4_timeout\n");
+#endif
 }

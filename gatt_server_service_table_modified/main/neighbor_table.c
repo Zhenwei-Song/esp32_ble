@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-18 11:11:21
+ * @LastEditTime: 2024-01-24 15:37:41
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -276,6 +276,23 @@ uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id)
     }
 }
 
+uint8_t *get_neighbor_node_quality_from_me(p_neighbor_table table, uint8_t *id)
+{
+    p_neighbor_note temp = table->head;
+    if (temp == NULL) {
+        return 0;
+    }
+    else {
+        while (temp != NULL) {
+            if (memcmp(temp->id, id, ID_LEN) == 0) { // 找到了
+                return temp->quality_from_me;
+            }
+            temp = temp->next;
+        }
+        return 0;
+    }
+}
+
 /**
  * @description: 更新邻居表的计数号（-1）
  * @param {p_neighbor_table} table
@@ -454,12 +471,14 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         while (temp != NULL) {
             if (temp->is_connected == true) {                                                                                                           // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) {                                                                // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                                                                             // 若它就是自己的next id，则更新自己的链路质量
+                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
+
                             memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                         }
                         else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
+                            
                             memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
                         }
                     }

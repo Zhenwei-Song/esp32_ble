@@ -1,9 +1,9 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-08 16:36:10
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-18 09:20:32
- * @FilePath: \esp32\gatt_server_service_table_modified\main\ble_queue.c
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-23 19:24:03
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble_queue.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -62,6 +62,9 @@ void queue_push_with_check(p_queue q, uint8_t *data, int rssi)
     int repeated = -1;
     if (q->tail == NULL) { // 队列为空
         p_qnode new_node_head = (p_qnode)malloc(sizeof(qnode));
+        if (new_node_head == NULL) {
+            ESP_LOGE(QUEUE_TAG, "malloc failed");
+        }
         memcpy(new_node_head->data, data, queue_data_length);
         new_node_head->rssi = rssi;
         q->head = q->tail = new_node_head;
@@ -78,11 +81,10 @@ void queue_push_with_check(p_queue q, uint8_t *data, int rssi)
                 ESP_LOGE(QUEUE_TAG, "malloc failed");
             }
             else {
-                memcpy(new_node->data, data, queue_data_length);
                 new_node->rssi = rssi;
+                memcpy(new_node->data, data, queue_data_length);
                 q->tail->next = new_node;
                 q->tail = new_node;
-                new_node->next = NULL;
                 q->tail->next = NULL;
             }
             // ESP_LOGW(QUEUE_TAG, "message add to queue");

@@ -240,8 +240,8 @@ void print_down_routing_table(p_down_routing_table table)
     p_down_routing_note temp = table->head;
     ESP_LOGE(DOWN_ROUTING_TAG, "****************************Start printing down_routing table:***********************************************");
     while (temp != NULL) {
-        ESP_LOGI(DOWN_ROUTING_TAG, "source_id:");
-        esp_log_buffer_hex(DOWN_ROUTING_TAG, temp->source_id, ID_LEN);
+        //ESP_LOGI(DOWN_ROUTING_TAG, "source_id:");
+        //esp_log_buffer_hex(DOWN_ROUTING_TAG, temp->source_id, ID_LEN);
         ESP_LOGI(DOWN_ROUTING_TAG, "destination_id:");
         esp_log_buffer_hex(DOWN_ROUTING_TAG, temp->destination_id, ID_LEN);
         ESP_LOGI(DOWN_ROUTING_TAG, "reverse_next_id:");

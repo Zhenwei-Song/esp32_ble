@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:15
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-20 09:54:40
+ * @LastEditTime: 2024-01-22 13:27:49
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\up_routing_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -17,6 +17,9 @@
 bool refresh_flag_for_up_routing = false;
 
 up_routing_table my_up_routing_table;
+
+uint8_t head_id[ID_LEN];
+
 /**
  * @description: 初始化路由表
  * @param {p_up_routing_table} table
@@ -60,7 +63,7 @@ int insert_up_routing_node(p_up_routing_table table, uint8_t *destination_id, ui
     else {
         while (cur != NULL) {
             // ESP_LOGI(UP_ROUTING_TAG, "table->head->id addr: %p", cur->id);
-            repeated = memcmp(cur->destination_id, new_node->destination_id, ID_LEN);
+            repeated = memcmp(cur->next_id, new_node->next_id, ID_LEN);
             if (repeated == 0) { // 检查重复,重复则更新
                 // ESP_LOGI(UP_ROUTING_TAG, "repeated id address found");
                 // memcpy(cur->destination_id, new_node->destination_id, ID_LEN);
@@ -115,8 +118,18 @@ void remove_up_routing_node_from_node(p_up_routing_table table, p_up_routing_not
     }
 }
 
+uint8_t *get_up_routing_head_id(p_up_routing_table table)
+{
+    if (table->head != NULL) {
+        p_up_routing_note temp = (p_up_routing_note)malloc(sizeof(up_routing_note));
+        memcpy(temp->next_id, table->head->next_id, ID_LEN);
+        memcpy(head_id, temp->next_id, ID_LEN);
+    }
+    return head_id;
+}
+
 /**
- * @description: 从路由表移除项（根据destination_id）
+ * @description: 从路由表移除项（根据next_id）
  * @param {p_up_routing_table} table
  * @param {uint8_t} *old_id
  * @return {*}
@@ -125,7 +138,7 @@ void remove_up_routing_node(p_up_routing_table table, uint8_t *old_id)
 {
     if (table->head != NULL) {
         p_up_routing_note prev = NULL;
-        if (memcmp(table->head->destination_id, old_id, ID_LEN) == 0) { // 移除头部
+        if (memcmp(table->head->next_id, old_id, ID_LEN) == 0) { // 移除头部
             prev = table->head;
             table->head = table->head->next;
             free(prev);
@@ -133,7 +146,7 @@ void remove_up_routing_node(p_up_routing_table table, uint8_t *old_id)
         else { // 找出old_up_routing的上一项
             prev = table->head;
             while (prev != NULL) {
-                if (prev->next->destination_id == old_id) // 找到要删除的项
+                if (prev->next->next_id == old_id) // 找到要删除的项
                     break;
                 else
                     prev = prev->next;

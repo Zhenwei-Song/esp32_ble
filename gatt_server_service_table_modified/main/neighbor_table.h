@@ -64,6 +64,8 @@ int set_neighbor_node_distance(p_neighbor_table table, uint8_t *id, int8_t dista
 
 uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id);
 
+uint8_t *get_neighbor_node_quality_from_me(p_neighbor_table table, uint8_t *id);
+
 void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info);
 
 void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info);
