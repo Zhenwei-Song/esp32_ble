@@ -1,9 +1,9 @@
 /*
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-09 15:05:02
- * @LastEditors: Zhenwei-Song zhenwei.song@qq.com
- * @LastEditTime: 2023-11-24 17:20:06
- * @FilePath: \esp32\gatt_server_service_table_modified\main\neighbor_table.h
+ * @LastEditors: Zhenwei Song zhenwei.song@qq.com
+ * @LastEditTime: 2024-01-24 17:21:54
+ * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
  */
@@ -24,13 +24,17 @@ typedef struct neighbor_note {
     uint8_t id[ID_LEN];
     bool is_root;
     bool is_connected;
-    uint8_t quality[QUALITY_LEN];
-    uint8_t quality_from_me[QUALITY_LEN];
+    uint8_t quality[QUALITY_LEN];                     // 邻居节点到簇首的链路质量（乘积项）
+    uint8_t quality_from_me[QUALITY_LEN];             // 我通过邻居节点到簇首的链路质量
+    uint8_t quality_from_me_to_neighber[QUALITY_LEN]; // 我到邻居节点的链路质量  乘积项*65535
     // uint8_t quality;
-    uint8_t distance;
+    uint8_t distance; // 邻居到簇首的跳数
     int rssi;
+    double SNRhat;
+    double P;
     uint8_t count;
     struct neighbor_note *next;
+
 } neighbor_note, *p_neighbor_note;
 
 typedef struct neighbor_table {

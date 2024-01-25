@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2024-01-20 09:47:36
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 10:28:12
+ * @LastEditTime: 2024-01-25 10:16:03
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\macro_def.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -10,7 +10,7 @@
 #ifndef MACRO_DEF_H_
 #define MACRO_DEF_H_
 
-#define SELF_ROOT // 自己是root
+// #define SELF_ROOT // 自己是root
 
 #define BUTTON_MY_MESSAGE // 按键发送自己的消息
 // #define BUTTON_BLOCK_MESSAGE // 按键发送阻塞消息
@@ -23,14 +23,14 @@
 #define BUTTON            // 按键
 #define BLE_TIMER         // 定时器
 
-// #define PRINT_MY_INFO
-// #define PRINT_NEIGHBOR_TABLE
+#define PRINT_MY_INFO
+#define PRINT_NEIGHBOR_TABLE
 // #define PRINT_UP_ROUTING_TABLE
 // #define PRINT_DOWN_ROUTING_TABLE
 // #define PRINT_CONTROL_PACKAGES_RECEIVED
 // #define PRINT_MESSAGE_PACKAGES_RECEIVED
-// #define PRINT_CONTROL_PACKAGES_STATES
-// #define PRINT_MASSAGE_PACKAGES_STATES
+#define PRINT_CONTROL_PACKAGES_STATES
+#define PRINT_MASSAGE_PACKAGES_STATES
 // #define PRINT_ENTRY_NETWORK_FLAG_STATES
 // #define PRINT_TIMER_STATES
 // #define PRINT_GAP_EVENT_STATES

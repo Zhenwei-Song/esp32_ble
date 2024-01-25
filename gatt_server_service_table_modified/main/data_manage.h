@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-23 20:45:23
+ * @LastEditTime: 2024-01-24 20:12:20
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -97,7 +97,8 @@ typedef struct my_info {
     uint8_t x;
     uint8_t y;
     uint8_t distance;
-    uint8_t quality[QUALITY_LEN];
+    uint8_t quality_from_me[QUALITY_LEN];
+    uint8_t quality_from_me_to_neighber[QUALITY_LEN];
     uint8_t my_id[ID_LEN];
     uint8_t root_id[ID_LEN];
     uint8_t next_id[ID_LEN];
@@ -209,7 +210,9 @@ extern uint8_t adv_data_62[62];
 
 uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t data_2_len);
 
-uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance);
+uint8_t *quality_calculate(double SNR_hat);
+
+uint8_t *quality_calculate_from_me_to_cuhsou(uint8_t *quality_from_me_to_neighber, uint8_t *quality, uint8_t distance);
 
 void my_info_init(p_my_info my_information, uint8_t *my_mac);
 
@@ -235,9 +238,9 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info);
 
 uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id);
 
-void resolve_anrrep(uint8_t *anrrep_data, p_my_info info);
+void resolve_anrrep(uint8_t *anrrep_data, p_my_info info, int rssi);
 
-uint8_t *generate_rrer(p_my_info info);
+    uint8_t *generate_rrer(p_my_info info);
 
 void resolve_rrer(uint8_t *rrer_data, p_my_info info);
 

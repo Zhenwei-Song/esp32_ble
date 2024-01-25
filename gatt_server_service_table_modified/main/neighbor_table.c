@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 15:37:41
+ * @LastEditTime: 2024-01-24 21:23:37
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -19,6 +19,7 @@
 
 #include "esp_log.h"
 
+#include "ble_quality.h"
 #include "ble_queue.h"
 #include "ble_timer.h"
 #include "down_routing_table.h"
@@ -72,6 +73,12 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
     p_neighbor_note cur = table->head;
     int repeated = -1;
     if (table->head == NULL) { // 路由表为空
+        double RSSI = pow(10, 0.1 * (float)(rssi));
+        double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
+        double snr = RSSI / back_noise;
+        Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
+        new_node->SNRhat = ((pow(10, 0.1 * (float)(-56))) / (pow(10, 0.1 * (float)(BACKGROUND_NOISE))));
+        new_node->P = 1;
         table->head = new_node;
         new_node->next = NULL;
         return 0;
@@ -89,6 +96,11 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
                 cur->distance = new_node->distance;
                 cur->rssi = new_node->rssi;
                 cur->count = new_node->count; // 重新计数
+                double RSSI = pow(10, 0.1 * (float)(rssi));
+                double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
+                double snr = RSSI / back_noise;
+                printf("rssi:%d, RSSI:%f, back_noise:%10f,BACKGROUND_NOISE: %f\n", cur->rssi, RSSI, back_noise, (float)BACKGROUND_NOISE);
+                Kalman((&cur->SNRhat), snr, (&cur->P), Q, R);
                 free(new_node);
                 return 0;
             }
@@ -96,6 +108,12 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
             cur = cur->next;
         }
         if (prev != NULL) {
+            double RSSI = pow(10, 0.1 * (float)(rssi));
+            double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
+            double snr = RSSI / back_noise;
+            Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
+            new_node->SNRhat = ((pow(10, 0.1 * (float)(-56))) / (pow(10, 0.1 * (float)(BACKGROUND_NOISE))));
+            new_node->P = 1;
             prev->next = new_node; // 表尾添加新项
             new_node->next = NULL;
         }
@@ -309,7 +327,7 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
                     // info->update = info->update + 1;
                     info->is_connected = false;
                     info->distance = NOR_NODE_INIT_DISTANCE;
-                    info->quality[0] = NOR_NODE_INIT_QUALITY;
+                    info->quality_from_me[0] = NOR_NODE_INIT_QUALITY;
                     memset(info->root_id, 0, ID_LEN);
                     memset(info->next_id, 0, ID_LEN);
 // refresh_flag_for_neighbor = true;
@@ -347,7 +365,7 @@ void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info)
 #ifndef SELF_ROOT
         info->is_connected = false;
         info->distance = 100;
-        info->quality[0] = NOR_NODE_INIT_QUALITY;
+        info->quality_from_me[0] = NOR_NODE_INIT_QUALITY;
         memset(info->root_id, 0, ID_LEN);
         memset(info->next_id, 0, ID_LEN);
         // refresh_flag_for_neighbor = true;
@@ -369,9 +387,13 @@ void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info)
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
             if (temp->is_connected == true) { // 若为入网节点
-                memcpy(temp->quality_from_me, quality_calculate(temp->rssi, temp->quality, temp->distance), QUALITY_LEN);
+                // 完成对邻居表中 我到邻居节点的链路质量 乘积项*65535
+                memcpy(temp->quality_from_me_to_neighber, quality_calculate(temp->SNRhat), QUALITY_LEN);
+                // jide gai
+                memcpy(temp->quality_from_me, quality_calculate_from_me_to_cuhsou(temp->quality_from_me_to_neighber, temp->quality, temp->distance), QUALITY_LEN);
+
                 if (memcmp(temp->id, info->next_id, ID_LEN) == 0) { // 更新自己到父节点的链路质量
-                    memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                    memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                 }
                 if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1
                     threshold_high_flag |= 1;
@@ -405,15 +427,15 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
             if (temp->is_connected == true) {                                          // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
                     info->is_connected |= 1;
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                    if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
                         if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                         else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
                             info->distance = temp->distance + 1;
                             refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                     }
                 }
@@ -438,15 +460,15 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
             if (temp->is_connected == true) {                                          // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
                     info->is_connected |= 1;
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                    if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                      // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                         else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
                             info->distance = temp->distance + 1;
                             refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                     }
                 }
@@ -470,16 +492,16 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
             if (temp->is_connected == true) {                                                                                                           // 若为入网节点
-                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
+                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP`
+                    if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) {                                                        // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                                                                             // 若它就是自己的next id，则更新自己的链路质量
 
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                         else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
-                            
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                     }
                 }
@@ -515,15 +537,15 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
-            if (temp->is_connected == true) {                                            // 若为入网节点
-                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) < 0) {     // 小于阈值2，发送ANRREQ
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {              // 若它就是自己的next id，则更新自己的链路质量
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+            if (temp->is_connected == true) {                                                    // 若为入网节点
+                if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) < 0) {             // 小于阈值2，发送ANRREQ
+                    if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                      // 若它就是自己的next id，则更新自己的链路质量
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                         else { // 更新自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
-                            memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                            memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                         }
                     }
                 }
@@ -564,15 +586,15 @@ void set_my_next_id_quality_and_distance(p_neighbor_table table, p_my_info info)
                 if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
                     info->is_connected |= 1;
                     if (memcmp(info->next_id, temp->id, ID_LEN) == 0) { // 若它就是自己的next id，则更新自己的链路质量
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                     }
-                    if (memcmp(info->quality, temp->quality_from_me, QUALITY_LEN) > 0) { // 若有邻居节点的链路质量比自己当前的链路质量高
-                        if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {              // 更新了自己的next_id
+                    if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) > 0) { // 若有邻居节点的链路质量比自己当前的链路质量高
+                        if (memcmp(info->next_id, temp->id, ID_LEN) != 0) {                      // 更新了自己的next_id
                             memcpy(info->next_id, temp->id, ID_LEN);
                             info->distance = temp->distance + 1;
                             refresh_flag_for_neighbor = true; // 因为自己的next_id变了，所以立即广播hello
                         }
-                        memcpy(info->quality, temp->quality_from_me, QUALITY_LEN);
+                        memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                     }
                 }
                 else if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0) { // 小于阈值1大于阈值2，发送入网请求

@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-23 19:04:29
+ * @LastEditTime: 2024-01-24 17:32:48
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -44,7 +44,7 @@
 #ifdef DOWN_ROUTINGTABLE
 #include "down_routing_table.h"
 #include "esp_mac.h"
-#include "neighbor_table.h" l
+#include "neighbor_table.h"
 #include "up_routing_table.h"
 #endif // DOWN_ROUTINGTABLE
 #ifdef BUTTON
@@ -142,7 +142,7 @@ static void ble_down_routing_table_task(void *pvParameters)
     while (1) {
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
-        update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
+        // update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
         if ((timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false && my_information.is_connected == false) || (timer3_running == false && entry_network_flag == true && my_information.is_connected == true)) { // 路由错误后等待一段时间后才进行路由发现
             entry_network_flag = false;
             if (threshold_high_flag == true) {
@@ -203,8 +203,8 @@ static void ble_down_routing_table_task(void *pvParameters)
         ESP_LOGI(DATA_TAG, "next_id:");
         esp_log_buffer_hex(DATA_TAG, my_information.next_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "distance:%d", my_information.distance);
-        ESP_LOGI(DATA_TAG, "quality:");
-        esp_log_buffer_hex(DATA_TAG, my_information.quality, QUALITY_LEN);
+        ESP_LOGI(DATA_TAG, "quality_from_me:");
+        esp_log_buffer_hex(DATA_TAG, my_information.quality_from_me, QUALITY_LEN);
         ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
         ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
 #endif // PRINT_MY_INFO
@@ -286,7 +286,7 @@ static void ble_rec_data_task(void *pvParameters)
                         ESP_LOGI(TAG, "ANRREP_DATA:");
                         esp_log_buffer_hex(TAG, anrrep, anrrep_len);
 #endif
-                        resolve_anrrep(anrrep, &my_information);
+                        resolve_anrrep(anrrep, &my_information,temp_rssi);
                     }
                     if (rrer != NULL) {
 #ifdef PRINT_CONTROL_PACKAGES_RECEIVED

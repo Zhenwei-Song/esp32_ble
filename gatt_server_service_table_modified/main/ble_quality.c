@@ -5,13 +5,10 @@
 // Q R为超参数
 double Q = 1; // 系统过程
 double R = 1; // 测量
-double SNR = 0;
-double P = 1;
-double SNRhat = 0;
-double PRR;
-double E_SNR = 0;
+//double SNR = 0;
+//double P = 1;
 
-double base = 78.0L / 79.0L;
+//double base = 78.0L / 79.0L;
 
 // 卡尔曼滤波器 对snr进行滤波   一维 初始化p=1 SNRhat初始化为0 P初始化为1
 void Kalman(double *SNRhat, double SNR_Z, double *P, double Q, double R)
@@ -28,6 +25,8 @@ void Kalman(double *SNRhat, double SNR_Z, double *P, double Q, double R)
     *SNRhat = SNR_hat + K * (SNR_Z - SNR_hat);
     // 更新估计误差协方差
     *P = (1 - K) * *P;
+    printf("SNRhat:%f\n", *SNRhat);
+    printf("P:%f\n", *P);
 }
 
 // 计算误码率
@@ -50,14 +49,14 @@ double calculate_per(double SNR)
 }
 
 // 返回邻居节点的链路质量(只包含乘积项) 16bit
-u_int16_t bluetooth_prr_m(int m, int N, long double E_SNR, int w, int n)
+double bluetooth_prr_m(int m, int N, long double E_SNR, int w, int n)
 {
-    u_int16_t PRR = 0;
-    long double prr = 1 - bluetooth_per_approximate_m(E_SNR, w, n);
+    //u_int16_t PRR = 0;
+    double prr = 1 - bluetooth_per_approximate_m(E_SNR, w, n);
     //printf("blue prr: %Lf\n", prr);
-    PRR = prr * 65535;
+    //PRR = prr * 65535;
     //printf("blue PRR: %d\n", PRR);
-    return PRR;
+    return prr;
 }
 
 // 返回 乘积项和相加项计算得出的8bit链路质量量化值  数值越大 越好

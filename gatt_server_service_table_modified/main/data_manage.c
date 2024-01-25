@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 15:15:46
+ * @LastEditTime: 2024-01-24 21:03:38
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -112,7 +112,7 @@ uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t 
  * @param {uint8_t} distance
  * @return {*}
  */
-uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distance)
+uint8_t *quality_calculate(double SNR_hat)
 {
 #if 0
     double temp_rssi = (double)(-rssi);
@@ -145,34 +145,32 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
     return temp_quality_of_mine;
 
 #else
-    double SNR = 0;
-    double P = 1;
-    double SNRhat = 0;
-    double PRR;
-    double E_SNR = 0;
+    /*  double SNR = 0;
+      double P = 1;
+      double SNRhat = 0;
+      double PRR;
+      double E_SNR = 0;
 
-    double Q = 1; // 系统过程
-    double R = 1; // 测量
-    uint8_t temp_quality;
+      double Q = 1; // 系统过程
+      double R = 1; // 测量
+      uint8_t temp_quality_1;
+      uint8_t temp_quality_2;
+      SNR = calculate_snr((double)rssi, BACKGROUND_NOISE);
+      ESP_LOGE(DATA_TAG, "snr: %f", SNR);
+      E_SNR = pow(10, SNR / 10); // 转化为功率比
+      // ESP_LOGE(DATA_TAG, "E_SNR: %f", E_SNR);
+
+      Kalman(&SNRhat, E_SNR, &P, Q, R);*/
+    double PRR;
     uint8_t temp_quality_1;
     uint8_t temp_quality_2;
-    SNR = calculate_snr((double)rssi, BACKGROUND_NOISE);
-    ESP_LOGE(DATA_TAG, "snr: %f", SNR);
-    E_SNR = pow(10, SNR / 10);
-    // ESP_LOGE(DATA_TAG, "E_SNR: %f", E_SNR);
-    Kalman(&SNRhat, E_SNR, &P, Q, R);
-    PRR = bluetooth_prr_m(1, 30, E_SNR, 1, 5);
-    SNR = SNR + 1;
-    // 拿到邻居的链路质量 拿到邻居的跳数
-    // 邻居链路质量- 跳数权重* 邻居到簇首的跳数 = 邻居的乘积项*（1-跳数权重）
-    // 拿到邻居的乘积项
-    // 乘积项/65535 拿到邻居到簇首的PRR
-    // PPR和me 到该节点的PRR相乘
-    // 跳数加1 进入linkquality 函数
+    PRR = bluetooth_prr_m(1, 30, SNR_hat, 1, 5); // 到邻居节点的PRR
+    uint16_t result = PRR * 65535;
+    // 返回邻居节点的链路质量(只包含乘积项)
 
-    temp_quality = link_quality(distance, PRR);
-    temp_quality_1 = temp_quality / 100;
-    temp_quality_2 = temp_quality % 100;
+    // temp_quality = link_quality(distance, PRR);
+    temp_quality_1 = result >> 8;
+    temp_quality_2 = result & 0xFF;
     temp_quality_of_mine[0] = temp_quality_1;
     temp_quality_of_mine[1] = temp_quality_2;
     // ESP_LOGW(DATA_TAG, "calculate quality:");
@@ -181,6 +179,42 @@ uint8_t *quality_calculate(int rssi, uint8_t *quality_from_upper, uint8_t distan
 #endif
 }
 
+/**
+ * @description: 计算我通过邻居节点到簇首的链路质量
+ * @param {int} rssi
+ * @param {uint8_t} *quality_from_upper
+ * @param {uint8_t} distance
+ * @return {*}
+ */
+uint8_t *quality_calculate_from_me_to_cuhsou(uint8_t *quality_from_me_to_neighber, uint8_t *quality, uint8_t distance)
+{
+    // 拿到邻居的链路质量 拿到邻居的跳数
+    // 邻居链路质量- 跳数权重* 邻居到簇首的跳数 = 邻居的乘积项*（1-跳数权重）
+    // 拿到邻居的乘积项
+    // 乘积项/65535 拿到邻居到簇首的PRR
+    // PPR和me 到该节点的PRR相乘
+    // 跳数加1 进入linkquality 函数
+    // temp_quality = link_quality(distance, PRR);
+    uint8_t temp_quality_1;
+    uint8_t temp_quality_2;
+    uint16_t PRR_form_me_to_neighber = (quality_from_me_to_neighber[0] << 8) + quality_from_me_to_neighber[1]; // 我到邻居的链路质量 乘积项
+    double prr_form_me_to_neighber = (float)(PRR_form_me_to_neighber) / 65535;                                 // 调试
+    uint16_t PRR_from_neighber_to_cluster = (quality[0] << 8) + quality[1];                                    // 邻居节点到簇首的链路质量乘积项
+    double prr_from_neighber_to_cluster = (float)(PRR_from_neighber_to_cluster) / 65535;
+
+    double prr = prr_form_me_to_neighber * prr_from_neighber_to_cluster; // 我到簇首的链路质量乘积项
+
+    double percentage = 0.5;
+    uint16_t result = prr * 65535 * percentage + (1 - (float)((distance + 1) / MAX_HOP)) * 65535;
+
+    temp_quality_1 = result >> 8;
+    temp_quality_2 = result & 0xFF;
+    temp_quality_of_mine[0] = temp_quality_1;
+    temp_quality_of_mine[1] = temp_quality_2;
+    // ESP_LOGW(DATA_TAG, "calculate quality:");
+    // esp_log_buffer_hex(DATA_TAG, temp_quality_of_mine, QUALITY_LEN);
+    return temp_quality_of_mine;
+}
 /**
  * @description:my_infomation初始化
  * @param {p_my_info} my_information
@@ -211,8 +245,10 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_connected = true;
     my_information->distance = 0;
     // memset(my_information->quality, 0, QUALITY_LEN);
-    my_information->quality[0] = 0xff;
-    my_information->quality[1] = 0xff;
+    my_information->quality_from_me[0] = 0xff;
+    my_information->quality_from_me[1] = 0xff;
+    my_information->quality_from_me_to_neighber[0] = 0xff;
+    my_information->quality_from_me_to_neighber[1] = 0xff;
     my_information->update = 0;
     memcpy(my_information->root_id, my_mac + 4, ID_LEN);
     memcpy(my_information->next_id, my_mac + 4, ID_LEN);
@@ -220,8 +256,10 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->is_root = false;
     my_information->is_connected = false;
     my_information->distance = 0;
-    my_information->quality[0] = NOR_NODE_INIT_QUALITY;
-    my_information->quality[1] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me[0] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me[1] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me_to_neighber[0] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me_to_neighber[1] = NOR_NODE_INIT_QUALITY;
     my_information->update = 0;
 #endif
 }
@@ -241,10 +279,9 @@ uint8_t *generate_phello(p_my_info info)
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
-    //hello
+    // hello
 
-
-    memcpy(temp_quality, info->quality, QUALITY_LEN);
+    memcpy(temp_quality, info->quality_from_me, QUALITY_LEN);
 
     if (info->is_root)     // 自己是根节点
         phello[1] |= 0x11; // 节点类型，入网标志
@@ -286,7 +323,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     temp_info->x = temp[2];
     temp_info->y = temp[3];
     temp_info->distance = temp[4];
-    // temp_info->quality = temp[7];4
+    // temp_info->quality_from_me = temp[7];4
     memcpy(temp_info->quality, temp + 6, QUALITY_LEN);
     memcpy(temp_info->node_id, temp + 8, ID_LEN);
     // memcpy(info->root_id, temp + 10, ID_LEN);
@@ -302,17 +339,20 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
 #if 0
     if (temp_info->is_connected) {
         info->distance = temp_info->distance + 1;
-        memcpy(temp_quality, quality_calculate(rssi, temp_info->quality, info), QUALITY_LEN);
+        memcpy(temp_quality, quality_calculate(rssi, temp_info->quality_from_me, info), QUALITY_LEN);
     }
     else {
-        memcpy(temp_quality, temp_info->quality, QUALITY_LEN);
+        memcpy(temp_quality, temp_info->quality_from_me, QUALITY_LEN);
     }
 #endif
     /* -------------------------------------------------------------------------- */
     /*                                    更新邻居表                                   */
     /* -------------------------------------------------------------------------- */
+    /*20240124 马兴旺 更改插入内容*/
+
     insert_neighbor_node(&my_neighbor_table, temp_info->node_id, temp_info->is_root,
                          temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
+    update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
 #ifdef PRINT_HELLO_DETAIL
     ESP_LOGI(DATA_TAG, "****************************Hello info:*****************************************");
     ESP_LOGI(DATA_TAG, "the type of the packet:HELLO");
@@ -408,7 +448,7 @@ uint8_t *generate_anhsp(p_my_info info)
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
-    memcpy(temp_quality, info->quality, QUALITY_LEN);
+    memcpy(temp_quality, info->quality_from_me_to_neighber, QUALITY_LEN);
 
     anhsp[1] |= 0; // 初始距离定为0
     anhsp[2] |= temp_quality[0];
@@ -443,7 +483,19 @@ uint8_t *generate_transfer_anhsp(p_anhsp_info anhsp_info, p_my_info info)
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_source_id, anhsp_info->source_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
-    memcpy(temp_quality, anhsp_info->quality, QUALITY_LEN);
+    // memcpy(temp_quality, anhsp_info->quality_from_me, QUALITY_LEN);
+
+    uint16_t the_quality_from_me_to_neighber = (info->quality_from_me_to_neighber[0] << 8) + (info->quality_from_me_to_neighber[1]);
+    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighber / 65535;
+    uint16_t the_quality_from_neighber_to_me = (anhsp_info->quality[0] << 8) + (anhsp_info->quality[1]);
+    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighber_to_me / 65535;
+
+    double the_quality = the_quality_from_me_to_next * the_quality_from_neighbor_to_me_;
+    uint16_t the_quality_ = the_quality * 65535;
+    uint8_t temp_quality_1 = the_quality_ >> 8;
+    uint8_t temp_quality_2 = the_quality_ & 0xFF;
+    temp_quality[0] = temp_quality_1;
+    temp_quality[1] = temp_quality_2;
 
     anhsp[1] |= anhsp_info->distance + 1; // 经过一次转发，距离加1
     anhsp[2] |= temp_quality[0];
@@ -555,12 +607,16 @@ uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id)
     uint8_t *temp_next_id;
     uint8_t temp_destination_id[ID_LEN];
     uint8_t temp_reverse_next_id[ID_LEN];
+    uint8_t temp_quality[QUALITY_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, des_id, ID_LEN);
+    memcpy(temp_quality, info->quality_from_me_to_neighber, QUALITY_LEN);
     temp_next_id = get_down_routing_next_id(&my_down_routing_table, des_id);
     if (temp_next_id != NULL)
         memcpy(temp_reverse_next_id, temp_next_id, ID_LEN);
-    hsrrep[1] |= 0;             // distance
+    hsrrep[1] |= 0; // distance
+    hsrrep[2] |= temp_quality[0];
+    hsrrep[3] |= temp_quality[1];
     hsrrep[4] |= temp_my_id[0]; // 节点ID
     hsrrep[5] |= temp_my_id[1];
     hsrrep[6] |= temp_destination_id[0]; // 目的 ID
@@ -583,11 +639,26 @@ uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info)
     uint8_t temp_my_id[ID_LEN];
     uint8_t temp_destination_id[ID_LEN];
     uint8_t temp_reverse_next_id[ID_LEN];
+    uint8_t temp_quality[QUALITY_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, hsrrep_info->destination_id, ID_LEN);
     memcpy(temp_reverse_next_id, get_down_routing_next_id(&my_down_routing_table, temp_destination_id), ID_LEN);
 
+    uint16_t the_quality_from_me_to_neighber = (info->quality_from_me_to_neighber[0] << 8) + (info->quality_from_me_to_neighber[1]);
+    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighber / 65535;
+    uint16_t the_quality_from_neighber_to_me = (hsrrep_info->quality[0] << 8) + (hsrrep_info->quality[1]);
+    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighber_to_me / 65535;
+
+    double the_quality = the_quality_from_me_to_next * the_quality_from_neighbor_to_me_;
+    uint16_t the_quality_ = the_quality * 65535;
+    uint8_t temp_quality_1 = the_quality_ >> 8;
+    uint8_t temp_quality_2 = the_quality_ & 0xFF;
+    temp_quality[0] = temp_quality_1;
+    temp_quality[1] = temp_quality_2;
+
     hsrrep[1] = hsrrep_info->distance + 1;
+    hsrrep[2] |= temp_quality[0];
+    hsrrep[3] |= temp_quality[1];
     hsrrep[4] |= temp_my_id[0]; // 节点ID
     hsrrep[5] |= temp_my_id[1];
     hsrrep[6] |= temp_destination_id[0]; // 目的 ID
@@ -610,6 +681,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
     p_hsrrep_info temp_info = (p_hsrrep_info)malloc(sizeof(hsrrep_info));
     uint8_t temp[ANHSP_DATA_LEN];
     memcpy(temp, hsrrep_data, ANHSP_DATA_LEN);
+    memcpy(temp_info->quality, temp + 2, ID_LEN);
     memcpy(temp_info->node_id, temp + 4, ID_LEN);
     memcpy(temp_info->destination_id, temp + 6, ID_LEN);
     memcpy(temp_info->reverse_next_id, temp + 8, ID_LEN);
@@ -718,8 +790,8 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info)
     memcpy(temp_info->quality_threshold, temp, THRESHOLD_LEN);
     memcpy(temp_info->source_id, temp + 2, ID_LEN);
     // TODO:序列号
-    if (info->is_connected == true) {                                                // 我是入网节点
-        if (memcmp(info->quality, temp_info->quality_threshold, QUALITY_LEN) >= 0) { // 我满足阈值要求，我回复入网请求回复包
+    if (info->is_connected == true) {                                                        // 我是入网节点
+        if (memcmp(info->quality_from_me, temp_info->quality_threshold, QUALITY_LEN) >= 0) { // 我满足阈值要求，我回复入网请求回复包
             memcpy(adv_data_final_for_anrrep, data_match(adv_data_name_7, generate_anrrep(info, temp_info->source_id), HEAD_DATA_LEN, ANRREP_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_anrrep, 0);
             xSemaphoreGive(xCountingSemaphore_send);
@@ -748,7 +820,7 @@ uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id)
     uint8_t temp_quality[QUALITY_LEN];
     uint8_t temp_node_id[ID_LEN];
     uint8_t temp_des_id[ID_LEN];
-    memcpy(temp_quality, info->quality, QUALITY_LEN);
+    memcpy(temp_quality, info->quality_from_me, QUALITY_LEN);
     memcpy(temp_node_id, info->my_id, ID_LEN);
     memcpy(temp_des_id, des_id, ID_LEN);
     // TODO:序列号
@@ -770,7 +842,7 @@ uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id)
  * @param {p_my_info} info
  * @return {*}
  */
-void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
+void resolve_anrrep(uint8_t *anrrep_data, p_my_info info, int rssi)
 {
     p_anrrep_info temp_info = (p_anrrep_info)malloc(sizeof(anrrep_info));
     uint8_t temp[ANRREP_DATA_LEN];
@@ -787,6 +859,7 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info)
             printf("anrrep timer2 stopped\n");
 #endif                              // PRINT_TIMER_STATES
             timer2_running = false; // 定时停止
+            insert_neighbor_node(&my_neighbor_table, temp_info->node_id, 0, 1, temp_info->quality, temp_info->distance, rssi);
 #ifdef PRINT_ANRREP_DETAIL
             ESP_LOGI(DATA_TAG, "****************************ANRREP info:*****************************************");
             ESP_LOGI(DATA_TAG, "the type of the packet:ANRREP");
@@ -866,7 +939,7 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
 #endif // PRINT_CONTROL_PACKAGES_STATES
         info->is_connected = false;
         info->distance = NOR_NODE_INIT_DISTANCE;
-        info->quality[0] = NOR_NODE_INIT_QUALITY;
+        info->quality_from_me[0] = NOR_NODE_INIT_QUALITY;
         memset(info->root_id, 0, ID_LEN);
         memset(info->next_id, 0, ID_LEN);
         memcpy(adv_data_final_for_rrer, data_match(adv_data_name_7, generate_rrer(info), HEAD_DATA_LEN, RRER_FINAL_DATA_LEN), FINAL_DATA_LEN);
@@ -1135,7 +1208,7 @@ void resolve_block_message(uint8_t *block_message_data, p_my_info info)
 #endif // PRINT_CONTROL_PACKAGES_STATES
                 memcpy(temp_id, get_up_routing_head_id(&my_up_routing_table), ID_LEN);
                 info->distance = get_neighbor_node_distance(&my_neighbor_table, temp_id);
-                memcpy(info->quality, get_neighbor_node_quality_from_me(&my_neighbor_table, temp_id), QUALITY_LEN);
+                memcpy(info->quality_from_me, get_neighbor_node_quality_from_me(&my_neighbor_table, temp_id), QUALITY_LEN);
                 memcpy(info->next_id, temp_id, ID_LEN);
             }
         }
