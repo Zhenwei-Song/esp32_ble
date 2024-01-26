@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 21:23:37
+ * @LastEditTime: 2024-01-25 16:55:18
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -54,7 +54,7 @@ void init_neighbor_table(p_neighbor_table table)
  * @param {uint8_t} distance
  * @return {*}
  */
-int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, bool is_connected, uint8_t *quality, uint8_t distance, int rssi)
+int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, bool is_connected, uint8_t *quality, uint8_t distance, int rssi, uint8_t *next_id)
 {
     p_neighbor_note new_node = (p_neighbor_note)malloc(sizeof(neighbor_note));
     p_neighbor_note prev = NULL;
@@ -66,6 +66,8 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
     new_node->is_root = is_root;
     new_node->is_connected = is_connected;
     memcpy(new_node->quality, quality, QUALITY_LEN);
+    if (next_id != NULL)
+        memcpy(new_node->next_id, next_id, ID_LEN);
     new_node->distance = distance;
     new_node->rssi = rssi;
     // new_node->quality = quality;
@@ -76,9 +78,9 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
         double RSSI = pow(10, 0.1 * (float)(rssi));
         double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
         double snr = RSSI / back_noise;
-        Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
-        new_node->SNRhat = ((pow(10, 0.1 * (float)(-56))) / (pow(10, 0.1 * (float)(BACKGROUND_NOISE))));
+        new_node->SNRhat = init_number;
         new_node->P = 1;
+        Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
         table->head = new_node;
         new_node->next = NULL;
         return 0;
@@ -92,6 +94,8 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
                 cur->is_root = new_node->is_root;
                 cur->is_connected = new_node->is_connected;
                 memcpy(cur->quality, new_node->quality, QUALITY_LEN);
+                if (next_id != NULL)
+                    memcpy(cur->next_id, new_node->next_id, ID_LEN);
                 // cur->quality = new_node->quality;
                 cur->distance = new_node->distance;
                 cur->rssi = new_node->rssi;
@@ -99,7 +103,7 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
                 double RSSI = pow(10, 0.1 * (float)(rssi));
                 double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
                 double snr = RSSI / back_noise;
-                printf("rssi:%d, RSSI:%f, back_noise:%10f,BACKGROUND_NOISE: %f\n", cur->rssi, RSSI, back_noise, (float)BACKGROUND_NOISE);
+                printf("rssi:%d, RSSI:%f, back_noise:%10f,BACKGROUND_NOISE: %f snr:%f\n", cur->rssi, RSSI, back_noise, (float)BACKGROUND_NOISE, snr);
                 Kalman((&cur->SNRhat), snr, (&cur->P), Q, R);
                 free(new_node);
                 return 0;
@@ -111,9 +115,9 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
             double RSSI = pow(10, 0.1 * (float)(rssi));
             double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
             double snr = RSSI / back_noise;
-            Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
-            new_node->SNRhat = ((pow(10, 0.1 * (float)(-56))) / (pow(10, 0.1 * (float)(BACKGROUND_NOISE))));
             new_node->P = 1;
+            new_node->SNRhat = init_number;
+            Kalman((&new_node->SNRhat), snr, (&new_node->P), Q, R);
             prev->next = new_node; // 表尾添加新项
             new_node->next = NULL;
         }
@@ -311,6 +315,22 @@ uint8_t *get_neighbor_node_quality_from_me(p_neighbor_table table, uint8_t *id)
     }
 }
 
+uint8_t get_neighbor_node_number(p_neighbor_table table)
+{
+    uint8_t number = 0;
+    p_neighbor_note temp = table->head;
+    if (temp == NULL) {
+        return 0;
+    }
+    else {
+        while (temp != NULL) {
+            number = number + 1;
+            temp = temp->next;
+        }
+    }
+    return number;
+}
+
 /**
  * @description: 更新邻居表的计数号（-1）
  * @param {p_neighbor_table} table
@@ -388,10 +408,8 @@ void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info)
         while (temp != NULL) {
             if (temp->is_connected == true) { // 若为入网节点
                 // 完成对邻居表中 我到邻居节点的链路质量 乘积项*65535
-                memcpy(temp->quality_from_me_to_neighber, quality_calculate(temp->SNRhat), QUALITY_LEN);
-                // jide gai
-                memcpy(temp->quality_from_me, quality_calculate_from_me_to_cuhsou(temp->quality_from_me_to_neighber, temp->quality, temp->distance), QUALITY_LEN);
-
+                memcpy(temp->quality_from_me_to_neighbor, quality_calculate_from_me_to_neighbor(temp->SNRhat), QUALITY_LEN);
+                memcpy(temp->quality_from_me, quality_calculate_from_me_to_cluster(temp->quality_from_me_to_neighbor, temp->quality, temp->distance), QUALITY_LEN);
                 if (memcmp(temp->id, info->next_id, ID_LEN) == 0) { // 更新自己到父节点的链路质量
                     memcpy(info->quality_from_me, temp->quality_from_me, QUALITY_LEN);
                 }
@@ -457,8 +475,8 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
-            if (temp->is_connected == true) {                                          // 若为入网节点
-                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) { // 大于阈值1，直接入网
+            if (temp->is_connected == true && memcmp(temp->next_id, info->my_id, ID_LEN) != 0) { // 若为入网节点
+                if (memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) >= 0) {           // 大于阈值1，直接入网
                     info->is_connected |= 1;
                     if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
                         if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                      // 若它就是自己的next id，则更新自己的链路质量
@@ -491,7 +509,7 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
-            if (temp->is_connected == true) {                                                                                                           // 若为入网节点
+            if (temp->is_connected == true && memcmp(temp->next_id, info->my_id, ID_LEN) != 0) {                                                        // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) >= 0 && memcmp(temp->quality_from_me, threshold_high, QUALITY_LEN) < 0) { // 大于阈值2，发送ANHSP`
                     if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) {                                                        // 若有节点的链路质量比自己当前的链路质量高
                         if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                                                                             // 若它就是自己的next id，则更新自己的链路质量
@@ -537,7 +555,7 @@ void threshold_low_ops(p_neighbor_table table, p_my_info info)
     if (table->head != NULL) {
         p_neighbor_note temp = table->head;
         while (temp != NULL) {
-            if (temp->is_connected == true) {                                                    // 若为入网节点
+            if (temp->is_connected == true && memcmp(temp->next_id, info->my_id, ID_LEN) != 0) { // 若为入网节点
                 if (memcmp(temp->quality_from_me, threshold_low, QUALITY_LEN) < 0) {             // 小于阈值2，发送ANRREQ
                     if (memcmp(info->quality_from_me, temp->quality_from_me, QUALITY_LEN) < 0) { // 若有节点的链路质量比自己当前的链路质量高
                         if (memcmp(info->next_id, temp->id, ID_LEN) == 0) {                      // 若它就是自己的next id，则更新自己的链路质量
@@ -620,13 +638,18 @@ void print_neighbor_table(p_neighbor_table table)
         esp_log_buffer_hex(NEIGHBOR_TAG, temp->id, ID_LEN);
         ESP_LOGI(NEIGHBOR_TAG, "is_root:%d", temp->is_root);
         ESP_LOGI(NEIGHBOR_TAG, "is_connected:%d", temp->is_connected);
-        ESP_LOGI(NEIGHBOR_TAG, "quality:");
+        ESP_LOGI(NEIGHBOR_TAG, "quality_from_neighbor_to_cluster:");
         esp_log_buffer_hex(NEIGHBOR_TAG, temp->quality, QUALITY_LEN);
-#ifndef SELF_ROOT
-        ESP_LOGI(NEIGHBOR_TAG, "quality from me:");
+        ESP_LOGI(NEIGHBOR_TAG, "quality_from_me_to_cluster_via_neighbor:");
         esp_log_buffer_hex(NEIGHBOR_TAG, temp->quality_from_me, QUALITY_LEN);
-#endif
+        ESP_LOGI(NEIGHBOR_TAG, "quality_from_me_to_neighbor:");
+        esp_log_buffer_hex(NEIGHBOR_TAG, temp->quality_from_me_to_neighbor, QUALITY_LEN);
+        ESP_LOGI(NEIGHBOR_TAG, "next_id:");
+        esp_log_buffer_hex(NEIGHBOR_TAG, temp->next_id, ID_LEN);
         ESP_LOGI(NEIGHBOR_TAG, "distance:%d", temp->distance);
+        ESP_LOGI(NEIGHBOR_TAG, "rssi:%d", temp->rssi);
+        ESP_LOGI(NEIGHBOR_TAG, "SNRhat:%f", temp->SNRhat);
+        ESP_LOGI(NEIGHBOR_TAG, "P:%f", temp->P);
         // ESP_LOGI(NEIGHBOR_TAG, "count:%d", temp->count);
         temp = temp->next;
     }

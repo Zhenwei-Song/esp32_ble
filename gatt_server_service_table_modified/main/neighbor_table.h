@@ -19,14 +19,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#define init_number 10
 typedef struct neighbor_note {
     uint8_t id[ID_LEN];
+    uint8_t next_id[ID_LEN];
     bool is_root;
     bool is_connected;
     uint8_t quality[QUALITY_LEN];                     // 邻居节点到簇首的链路质量（乘积项）
     uint8_t quality_from_me[QUALITY_LEN];             // 我通过邻居节点到簇首的链路质量
-    uint8_t quality_from_me_to_neighber[QUALITY_LEN]; // 我到邻居节点的链路质量  乘积项*65535
+    uint8_t quality_from_me_to_neighbor[QUALITY_LEN]; // 我到邻居节点的链路质量  乘积项*65535
     // uint8_t quality;
     uint8_t distance; // 邻居到簇首的跳数
     int rssi;
@@ -52,9 +53,9 @@ extern bool threshold_low_flag;
 void init_neighbor_table(p_neighbor_table table);
 
 // int insert_neighbor_node(p_neighbor_table table, p_neighbor_note new_neighbor);
-int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, bool is_connected, uint8_t *quality, uint8_t distance, int rssi);
+int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, bool is_connected, uint8_t *quality, uint8_t distance, int rssi, uint8_t *next_id);
 
-void remove_neighbor_node_from_node(p_neighbor_table table, p_neighbor_note old_neighbor);
+    void remove_neighbor_node_from_node(p_neighbor_table table, p_neighbor_note old_neighbor);
 
 void remove_neighbor_node(p_neighbor_table table, uint8_t *old_id);
 
@@ -70,7 +71,9 @@ uint8_t get_neighbor_node_distance(p_neighbor_table table, uint8_t *id);
 
 uint8_t *get_neighbor_node_quality_from_me(p_neighbor_table table, uint8_t *id);
 
-void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info);
+uint8_t get_neighbor_node_number(p_neighbor_table table);
+
+    void refresh_cnt_neighbor_table(p_neighbor_table table, p_my_info info);
 
 void update_quality_of_neighbor_table(p_neighbor_table table, p_my_info info);
 

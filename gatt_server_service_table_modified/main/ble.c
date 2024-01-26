@@ -1,14 +1,5 @@
 /*
  * @Author: Zhenwei Song zhenwei.song@qq.com
- * @Date: 2023-12-05 17:18:06
- * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 17:32:48
- * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
- * @Description: 仅供学习交流使用
- * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
- */
-/*
- * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
  * @LastEditTime: 2024-01-20 09:17:38
@@ -27,9 +18,11 @@
  * 添加了定时器的使用
  * 完整的实现了路由发现阶段，并已验证 TODO:包计数号
  * 路由维护阶段实现了RRER TODO:路由表的维护
- * 入网后定时进行入网发现，以获取最好的入网路径
+ * 入网后定时进行入网发现，以获取最好的入网路径（未启用）
  * 添加了基于ID的包过滤机制，方便用于测试
- * Copyright (c) 2023 by Zhenwei Song, All Rights Reserved.
+ * 更新了链路质量的计算方法
+ * 明细了项目测试时使用到的打印信息
+ * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
  */
 
 #include "ble.h"
@@ -203,8 +196,10 @@ static void ble_down_routing_table_task(void *pvParameters)
         ESP_LOGI(DATA_TAG, "next_id:");
         esp_log_buffer_hex(DATA_TAG, my_information.next_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "distance:%d", my_information.distance);
-        ESP_LOGI(DATA_TAG, "quality_from_me:");
+        ESP_LOGI(DATA_TAG, "quality_from_me_to_cluster——via_best_neighbor:");
         esp_log_buffer_hex(DATA_TAG, my_information.quality_from_me, QUALITY_LEN);
+        ESP_LOGI(DATA_TAG, "quality_from_me_to_neighbor:");
+        esp_log_buffer_hex(DATA_TAG, my_information.quality_from_me_to_neighbor, QUALITY_LEN);
         ESP_LOGI(DATA_TAG, "update:%d", my_information.update);
         ESP_LOGW(DATA_TAG, "****************************Printing my info is finished *****************************************");
 #endif // PRINT_MY_INFO
@@ -286,7 +281,7 @@ static void ble_rec_data_task(void *pvParameters)
                         ESP_LOGI(TAG, "ANRREP_DATA:");
                         esp_log_buffer_hex(TAG, anrrep, anrrep_len);
 #endif
-                        resolve_anrrep(anrrep, &my_information,temp_rssi);
+                        resolve_anrrep(anrrep, &my_information, temp_rssi);
                     }
                     if (rrer != NULL) {
 #ifdef PRINT_CONTROL_PACKAGES_RECEIVED

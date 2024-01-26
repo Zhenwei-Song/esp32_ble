@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 20:12:20
+ * @LastEditTime: 2024-01-25 16:15:33
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -24,7 +24,7 @@
 
 #define DATA_TAG "DATA"
 
-#define BACKGROUND_NOISE -70
+#define BACKGROUND_NOISE -100
 
 #define X_B50A 0
 #define Y_B50A 0
@@ -54,8 +54,10 @@
 #define HEAD_DATA_LEN 7
 #define FINAL_DATA_LEN 31
 
-#define THRESHOLD_HIGH 100
-#define THRESHOLD_LOW 20
+#define THRESHOLD_HIGH_1 0xff
+#define THRESHOLD_HIGH_2 0xff
+#define THRESHOLD_LOW_1 0x01
+#define THRESHOLD_LOW_2 0xff
 
 #define PHELLO_FINAL_DATA_LEN 18
 #define PHELLO_DATA_LEN PHELLO_FINAL_DATA_LEN - 2
@@ -81,6 +83,7 @@
 #define BLOCK_MESSAGE_FINAL_DATA_LEN 10
 #define BLOCK_MESSAGE_DATA_LEN BLOCK_MESSAGE_FINAL_DATA_LEN - 2
 
+#define BLUDE_PACKET_LENGTH 376
 extern SemaphoreHandle_t xCountingSemaphore_send;
 extern SemaphoreHandle_t xCountingSemaphore_receive;
 
@@ -98,7 +101,7 @@ typedef struct my_info {
     uint8_t y;
     uint8_t distance;
     uint8_t quality_from_me[QUALITY_LEN];
-    uint8_t quality_from_me_to_neighber[QUALITY_LEN];
+    uint8_t quality_from_me_to_neighbor[QUALITY_LEN];
     uint8_t my_id[ID_LEN];
     uint8_t root_id[ID_LEN];
     uint8_t next_id[ID_LEN];
@@ -210,9 +213,9 @@ extern uint8_t adv_data_62[62];
 
 uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t data_2_len);
 
-uint8_t *quality_calculate(double SNR_hat);
+uint8_t *quality_calculate_from_me_to_neighbor(double SNR_hat);
 
-uint8_t *quality_calculate_from_me_to_cuhsou(uint8_t *quality_from_me_to_neighber, uint8_t *quality, uint8_t distance);
+uint8_t *quality_calculate_from_me_to_cluster(uint8_t *quality_from_me_to_neighbor, uint8_t *quality, uint8_t distance);
 
 void my_info_init(p_my_info my_information, uint8_t *my_mac);
 
@@ -240,7 +243,7 @@ uint8_t *generate_anrrep(p_my_info info, uint8_t *des_id);
 
 void resolve_anrrep(uint8_t *anrrep_data, p_my_info info, int rssi);
 
-    uint8_t *generate_rrer(p_my_info info);
+uint8_t *generate_rrer(p_my_info info);
 
 void resolve_rrer(uint8_t *rrer_data, p_my_info info);
 

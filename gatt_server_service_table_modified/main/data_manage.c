@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-24 21:03:38
+ * @LastEditTime: 2024-01-25 15:42:01
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -27,9 +27,9 @@ uint8_t id_b50a[ID_LEN] = {181, 10};
 
 my_info my_information;
 
-uint8_t threshold_high[QUALITY_LEN] = {THRESHOLD_HIGH, 0X00};
+uint8_t threshold_high[QUALITY_LEN] = {THRESHOLD_HIGH_1, THRESHOLD_HIGH_2};
 
-uint8_t threshold_low[QUALITY_LEN] = {THRESHOLD_LOW, 0X00};
+uint8_t threshold_low[QUALITY_LEN] = {THRESHOLD_LOW_1, THRESHOLD_LOW_2};
 
 uint8_t phello_final[PHELLO_FINAL_DATA_LEN] = {PHELLO_FINAL_DATA_LEN - 1, ESP_BLE_AD_TYPE_PHELLO};
 
@@ -106,13 +106,11 @@ uint8_t *data_match(uint8_t *data1, uint8_t *data2, uint8_t data_1_len, uint8_t 
 }
 
 /**
- * @description: 计算链路质量
- * @param {int} rssi
- * @param {uint8_t} *quality_from_upper
- * @param {uint8_t} distance
+ * @description: 计算我到邻居节点的链路质量
+ * @param {double} SNR_hat
  * @return {*}
  */
-uint8_t *quality_calculate(double SNR_hat)
+uint8_t *quality_calculate_from_me_to_neighbor(double SNR_hat)
 {
 #if 0
     double temp_rssi = (double)(-rssi);
@@ -164,7 +162,11 @@ uint8_t *quality_calculate(double SNR_hat)
     double PRR;
     uint8_t temp_quality_1;
     uint8_t temp_quality_2;
-    PRR = bluetooth_prr_m(1, 30, SNR_hat, 1, 5); // 到邻居节点的PRR
+    // 返回邻居节点的链路质量(只包含乘积项) 16bit
+    //
+    uint8_t number = get_neighbor_node_number(&my_neighbor_table);
+    // double bluetooth_prr_m(int m, int N, long double E_SNR,  int n)
+    PRR = bluetooth_prr_m(1, BLUDE_PACKET_LENGTH, SNR_hat, number); // 到邻居节点的PRR       参数传错了
     uint16_t result = PRR * 65535;
     // 返回邻居节点的链路质量(只包含乘积项)
 
@@ -186,7 +188,7 @@ uint8_t *quality_calculate(double SNR_hat)
  * @param {uint8_t} distance
  * @return {*}
  */
-uint8_t *quality_calculate_from_me_to_cuhsou(uint8_t *quality_from_me_to_neighber, uint8_t *quality, uint8_t distance)
+uint8_t *quality_calculate_from_me_to_cluster(uint8_t *quality_from_me_to_neighbor, uint8_t *quality, uint8_t distance)
 {
     // 拿到邻居的链路质量 拿到邻居的跳数
     // 邻居链路质量- 跳数权重* 邻居到簇首的跳数 = 邻居的乘积项*（1-跳数权重）
@@ -197,15 +199,14 @@ uint8_t *quality_calculate_from_me_to_cuhsou(uint8_t *quality_from_me_to_neighbe
     // temp_quality = link_quality(distance, PRR);
     uint8_t temp_quality_1;
     uint8_t temp_quality_2;
-    uint16_t PRR_form_me_to_neighber = (quality_from_me_to_neighber[0] << 8) + quality_from_me_to_neighber[1]; // 我到邻居的链路质量 乘积项
-    double prr_form_me_to_neighber = (float)(PRR_form_me_to_neighber) / 65535;                                 // 调试
-    uint16_t PRR_from_neighber_to_cluster = (quality[0] << 8) + quality[1];                                    // 邻居节点到簇首的链路质量乘积项
-    double prr_from_neighber_to_cluster = (float)(PRR_from_neighber_to_cluster) / 65535;
+    uint16_t PRR_form_me_to_neighbor = (quality_from_me_to_neighbor[0] << 8) + quality_from_me_to_neighbor[1]; // 我到邻居的链路质量 乘积项
+    double prr_form_me_to_neighbor = (float)(PRR_form_me_to_neighbor) / 65535;                                 // 调试
+    uint16_t PRR_from_neighbor_to_cluster = (quality[0] << 8) + quality[1];                                    // 邻居节点到簇首的链路质量乘积项
+    double prr_from_neighbor_to_cluster = (float)(PRR_from_neighbor_to_cluster) / 65535;
 
-    double prr = prr_form_me_to_neighber * prr_from_neighber_to_cluster; // 我到簇首的链路质量乘积项
+    double prr = prr_form_me_to_neighbor * prr_from_neighbor_to_cluster; // 我到簇首的链路质量乘积项
 
-    double percentage = 0.5;
-    uint16_t result = prr * 65535 * percentage + (1 - (float)((distance + 1) / MAX_HOP)) * 65535;
+    uint16_t result = prr * 65535 * percentage + (1 - (float)((distance + 1) / MAX_HOP)) * 65535 * percentage;
 
     temp_quality_1 = result >> 8;
     temp_quality_2 = result & 0xFF;
@@ -247,8 +248,8 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     // memset(my_information->quality, 0, QUALITY_LEN);
     my_information->quality_from_me[0] = 0xff;
     my_information->quality_from_me[1] = 0xff;
-    my_information->quality_from_me_to_neighber[0] = 0xff;
-    my_information->quality_from_me_to_neighber[1] = 0xff;
+    my_information->quality_from_me_to_neighbor[0] = 0xff;
+    my_information->quality_from_me_to_neighbor[1] = 0xff;
     my_information->update = 0;
     memcpy(my_information->root_id, my_mac + 4, ID_LEN);
     memcpy(my_information->next_id, my_mac + 4, ID_LEN);
@@ -258,8 +259,8 @@ void my_info_init(p_my_info my_information, uint8_t *my_mac)
     my_information->distance = 0;
     my_information->quality_from_me[0] = NOR_NODE_INIT_QUALITY;
     my_information->quality_from_me[1] = NOR_NODE_INIT_QUALITY;
-    my_information->quality_from_me_to_neighber[0] = NOR_NODE_INIT_QUALITY;
-    my_information->quality_from_me_to_neighber[1] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me_to_neighbor[0] = NOR_NODE_INIT_QUALITY;
+    my_information->quality_from_me_to_neighbor[1] = NOR_NODE_INIT_QUALITY;
     my_information->update = 0;
 #endif
 }
@@ -332,7 +333,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     if (info->is_root == false && temp_info->is_connected == true) {
         memcpy(info->root_id, temp + 10, ID_LEN);
         if (memcmp(temp_info->next_id, info->my_id, ID_LEN) != 0) { // 邻居中不以我为父节点的节点均是我的多路径选择对象
-            insert_up_routing_node(&my_up_routing_table, info->root_id, temp_info->node_id, temp_info->distance + 1);
+            insert_up_routing_node(&my_up_routing_table, info->root_id, temp_info->node_id, temp_info->distance);
         }
     }
 
@@ -351,7 +352,7 @@ void resolve_phello(uint8_t *phello_data, p_my_info info, int rssi)
     /*20240124 马兴旺 更改插入内容*/
 
     insert_neighbor_node(&my_neighbor_table, temp_info->node_id, temp_info->is_root,
-                         temp_info->is_connected, temp_info->quality, temp_info->distance, rssi);
+                         temp_info->is_connected, temp_info->quality, temp_info->distance, rssi, temp_info->next_id);
     update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
 #ifdef PRINT_HELLO_DETAIL
     ESP_LOGI(DATA_TAG, "****************************Hello info:*****************************************");
@@ -448,7 +449,7 @@ uint8_t *generate_anhsp(p_my_info info)
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_root_id, info->root_id, ID_LEN);
     memcpy(temp_next_id, info->next_id, ID_LEN);
-    memcpy(temp_quality, info->quality_from_me_to_neighber, QUALITY_LEN);
+    memcpy(temp_quality, info->quality_from_me_to_neighbor, QUALITY_LEN);
 
     anhsp[1] |= 0; // 初始距离定为0
     anhsp[2] |= temp_quality[0];
@@ -485,10 +486,10 @@ uint8_t *generate_transfer_anhsp(p_anhsp_info anhsp_info, p_my_info info)
     memcpy(temp_next_id, info->next_id, ID_LEN);
     // memcpy(temp_quality, anhsp_info->quality_from_me, QUALITY_LEN);
 
-    uint16_t the_quality_from_me_to_neighber = (info->quality_from_me_to_neighber[0] << 8) + (info->quality_from_me_to_neighber[1]);
-    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighber / 65535;
-    uint16_t the_quality_from_neighber_to_me = (anhsp_info->quality[0] << 8) + (anhsp_info->quality[1]);
-    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighber_to_me / 65535;
+    uint16_t the_quality_from_me_to_neighbor = (info->quality_from_me_to_neighbor[0] << 8) + (info->quality_from_me_to_neighbor[1]);
+    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighbor / 65535;
+    uint16_t the_quality_from_neighbor_to_me = (anhsp_info->quality[0] << 8) + (anhsp_info->quality[1]);
+    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighbor_to_me / 65535;
 
     double the_quality = the_quality_from_me_to_next * the_quality_from_neighbor_to_me_;
     uint16_t the_quality_ = the_quality * 65535;
@@ -542,7 +543,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
         ESP_LOGE(DATA_TAG, "response hsrrep");
 #endif // PRINT_CONTROL_PACKAGES_STATES
 #ifdef PRINT_ANHSP_DETAIL
-        ESP_LOGI(DATA_TAG, "****************************ANHSP info:*****************************************");
+        ESP_LOGE(DATA_TAG, "****************************ANHSP info:*****************************************");
         ESP_LOGI(DATA_TAG, "the type of the packet:ANHSP");
         ESP_LOGI(DATA_TAG, "ID of the source node:");
         esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
@@ -554,7 +555,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
         ESP_LOGI(DATA_TAG, "00 00");
         ESP_LOGI(DATA_TAG, "link quality:");
         esp_log_buffer_hex(DATA_TAG, temp_info->quality, QUALITY_LEN);
-        ESP_LOGI(DATA_TAG, "*********************************************************************************");
+        ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
     }
     else {
@@ -565,7 +566,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
             queue_push(&send_queue, adv_data_final_for_anhsp, 0);
             xSemaphoreGive(xCountingSemaphore_send);
 #ifdef PRINT_ANHSP_DETAIL
-            ESP_LOGI(DATA_TAG, "****************************ANHSP info:*****************************************");
+            ESP_LOGE(DATA_TAG, "****************************ANHSP info:*****************************************");
             ESP_LOGI(DATA_TAG, "the type of the packet:ANHSP");
             ESP_LOGI(DATA_TAG, "ID of the source node:");
             esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
@@ -577,7 +578,7 @@ void resolve_anhsp(uint8_t *anhsp_data, p_my_info info)
             ESP_LOGI(DATA_TAG, "00 00");
             ESP_LOGI(DATA_TAG, "link quality:");
             esp_log_buffer_hex(DATA_TAG, temp_info->quality, QUALITY_LEN);
-            ESP_LOGI(DATA_TAG, "*********************************************************************************");
+            ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
 #ifdef PRINT_CONTROL_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "transfer anhsp");
@@ -610,7 +611,7 @@ uint8_t *generate_hsrrep(p_my_info info, uint8_t *des_id)
     uint8_t temp_quality[QUALITY_LEN];
     memcpy(temp_my_id, info->my_id, ID_LEN);
     memcpy(temp_destination_id, des_id, ID_LEN);
-    memcpy(temp_quality, info->quality_from_me_to_neighber, QUALITY_LEN);
+    memcpy(temp_quality, info->quality_from_me_to_neighbor, QUALITY_LEN);
     temp_next_id = get_down_routing_next_id(&my_down_routing_table, des_id);
     if (temp_next_id != NULL)
         memcpy(temp_reverse_next_id, temp_next_id, ID_LEN);
@@ -644,10 +645,10 @@ uint8_t *generate_transfer_hsrrep(p_hsrrep_info hsrrep_info, p_my_info info)
     memcpy(temp_destination_id, hsrrep_info->destination_id, ID_LEN);
     memcpy(temp_reverse_next_id, get_down_routing_next_id(&my_down_routing_table, temp_destination_id), ID_LEN);
 
-    uint16_t the_quality_from_me_to_neighber = (info->quality_from_me_to_neighber[0] << 8) + (info->quality_from_me_to_neighber[1]);
-    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighber / 65535;
-    uint16_t the_quality_from_neighber_to_me = (hsrrep_info->quality[0] << 8) + (hsrrep_info->quality[1]);
-    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighber_to_me / 65535;
+    uint16_t the_quality_from_me_to_neighbor = (info->quality_from_me_to_neighbor[0] << 8) + (info->quality_from_me_to_neighbor[1]);
+    double the_quality_from_me_to_next = (double)the_quality_from_me_to_neighbor / 65535;
+    uint16_t the_quality_from_neighbor_to_me = (hsrrep_info->quality[0] << 8) + (hsrrep_info->quality[1]);
+    double the_quality_from_neighbor_to_me_ = (double)the_quality_from_neighbor_to_me / 65535;
 
     double the_quality = the_quality_from_me_to_next * the_quality_from_neighbor_to_me_;
     uint16_t the_quality_ = the_quality * 65535;
@@ -702,7 +703,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
                 ESP_LOGE(DATA_TAG, "receive hsrrep");
 #endif // PRINT_CONTROL_PACKAGES_STATES
 #ifdef PRINT_HSRREP_DETAIL
-                ESP_LOGI(DATA_TAG, "****************************HSRREP info:*****************************************");
+                ESP_LOGE(DATA_TAG, "****************************HSRREP info:*****************************************");
                 ESP_LOGI(DATA_TAG, "the type of the packet:HSRREP");
                 ESP_LOGI(DATA_TAG, "ID of the source node:");
                 esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
@@ -715,7 +716,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
                 ESP_LOGI(DATA_TAG, "link quality:");
                 ESP_LOGI(DATA_TAG, "");
                 ESP_LOGI(DATA_TAG, "the number of hops to the Network Exchange Point:%d", info->distance);
-                ESP_LOGI(DATA_TAG, "*********************************************************************************");
+                ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
             }
         }
@@ -729,7 +730,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
                 ESP_LOGE(DATA_TAG, "transfer hsrrep");
 #endif // PRINT_CONTROL_PACKAGES_STATES
 #ifdef PRINT_HSRREP_DETAIL
-                ESP_LOGI(DATA_TAG, "****************************HSRREP info:*****************************************");
+                ESP_LOGE(DATA_TAG, "****************************HSRREP info:*****************************************");
                 ESP_LOGI(DATA_TAG, "the type of the packet:HSRREP");
                 ESP_LOGI(DATA_TAG, "ID of the source node:");
                 esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
@@ -740,7 +741,7 @@ void resolve_hsrrep(uint8_t *hsrrep_data, p_my_info info)
                 ESP_LOGI(DATA_TAG, "ID of the Network Exchange Point:");
                 esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
                 ESP_LOGI(DATA_TAG, "the number of hops to the Network Exchange Point:%d", info->distance);
-                ESP_LOGI(DATA_TAG, "*********************************************************************************");
+                ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
             }
         }
@@ -799,11 +800,11 @@ void resolve_anrreq(uint8_t *anrreq_data, p_my_info info)
             ESP_LOGE(DATA_TAG, "send anrrep");
 #endif // PRINT_CONTROL_PACKAGES_STATES
 #ifdef PRINT_ANRREQ_DETAIL
-            ESP_LOGI(DATA_TAG, "****************************ANRREQ info:*****************************************");
+            ESP_LOGE(DATA_TAG, "****************************ANRREQ info:*****************************************");
             ESP_LOGI(DATA_TAG, "the type of the packet:ANRREQ");
             ESP_LOGI(DATA_TAG, "ID of the source node:");
             esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
-            ESP_LOGI(DATA_TAG, "*********************************************************************************");
+            ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
         }
     }
@@ -859,18 +860,18 @@ void resolve_anrrep(uint8_t *anrrep_data, p_my_info info, int rssi)
             printf("anrrep timer2 stopped\n");
 #endif                              // PRINT_TIMER_STATES
             timer2_running = false; // 定时停止
-            insert_neighbor_node(&my_neighbor_table, temp_info->node_id, 0, 1, temp_info->quality, temp_info->distance, rssi);
+            insert_neighbor_node(&my_neighbor_table, temp_info->node_id, 0, 1, temp_info->quality, temp_info->distance, rssi, NULL);
 #ifdef PRINT_ANRREP_DETAIL
-            ESP_LOGI(DATA_TAG, "****************************ANRREP info:*****************************************");
+            ESP_LOGE(DATA_TAG, "****************************ANRREP info:*****************************************");
             ESP_LOGI(DATA_TAG, "the type of the packet:ANRREP");
             ESP_LOGI(DATA_TAG, "the number of hops to the Network Exchange Point:%d", temp_info->distance);
             ESP_LOGI(DATA_TAG, "ID of the source node:");
             esp_log_buffer_hex(DATA_TAG, temp_info->node_id, ID_LEN);
             ESP_LOGI(DATA_TAG, "ID of the Network Exchange Point:");
             esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
-            ESP_LOGI(DATA_TAG, "link quality:");
+            ESP_LOGI(DATA_TAG, "link quality_from_neighor_to_cluster:");
             esp_log_buffer_hex(DATA_TAG, temp_info->quality, QUALITY_LEN);
-            ESP_LOGI(DATA_TAG, "*********************************************************************************");
+            ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
 #ifdef PRINT_CONTROL_PACKAGES_STATES
             ESP_LOGE(DATA_TAG, "receive anrrep"); // 收到anrrep，开始向root发送入网请求
@@ -926,13 +927,13 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
     memcpy(temp_info->destination_id, temp + 4, ID_LEN);
     if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
 #ifdef PRINT_RRER_DETAIL
-        ESP_LOGI(DATA_TAG, "****************************RRER info:*****************************************");
+        ESP_LOGE(DATA_TAG, "****************************RRER info:*****************************************");
         ESP_LOGI(DATA_TAG, "the type of the packet:RRER");
         ESP_LOGI(DATA_TAG, "ID of the source node:");
         esp_log_buffer_hex(DATA_TAG, temp_info->node_id, ID_LEN);
         ESP_LOGI(DATA_TAG, "ID of the Network Exchange Point:");
         esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
-        ESP_LOGI(DATA_TAG, "*********************************************************************************");
+        ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
 #ifdef PRINT_CONTROL_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "receive rrer");
@@ -1069,7 +1070,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                     ESP_LOGE(DATA_TAG, "receive message from node,responding");
 #endif // PRINT_MASSAGE_PACKAGES_STATES
 #ifdef PRINT_MESSAGE_DETAIL
-                    ESP_LOGI(DATA_TAG, "****************************MESSAGE info:*****************************************");
+                    ESP_LOGE(DATA_TAG, "****************************MESSAGE info:*****************************************");
                     ESP_LOGI(DATA_TAG, "the type of the packet:MESSAGE");
                     ESP_LOGI(DATA_TAG, "ID of the source node:");
                     esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
@@ -1082,7 +1083,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                     ESP_LOGI(DATA_TAG, "Infrared:%d", temp_info->infrared[0]);
                     ESP_LOGI(DATA_TAG, "Illumination:%d", temp_info->illumination[0]);
                     ESP_LOGI(DATA_TAG, "Smoke:%d", temp_info->smoke[0]);
-                    ESP_LOGI(DATA_TAG, "*********************************************************************************");
+                    ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
 #if 0
         memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
@@ -1108,7 +1109,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                 ESP_LOGE(DATA_TAG, "receive message from root");
 #endif // PRINT_MASSAGE_PACKAGES_STATES
 #ifdef PRINT_MESSAGE_DETAIL
-                ESP_LOGI(DATA_TAG, "****************************MESSAGE info:*****************************************");
+                ESP_LOGE(DATA_TAG, "****************************MESSAGE info:*****************************************");
                 ESP_LOGI(DATA_TAG, "the type of the packet:MESSAGE");
                 ESP_LOGI(DATA_TAG, "ID of the source node:");
                 esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
@@ -1121,7 +1122,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                 ESP_LOGI(DATA_TAG, "Infrared:%d", temp_info->infrared[0]);
                 ESP_LOGI(DATA_TAG, "Illumination:%d", temp_info->illumination[0]);
                 ESP_LOGI(DATA_TAG, "Smoke:%d", temp_info->smoke[0]);
-                ESP_LOGI(DATA_TAG, "*********************************************************************************");
+                ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
             }
         }
@@ -1130,7 +1131,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
             ESP_LOGE(DATA_TAG, "receive message,transfering");
 #endif // PRINT_MASSAGE_PACKAGES_STATES
 #ifdef PRINT_MESSAGE_DETAIL
-            ESP_LOGI(DATA_TAG, "****************************MESSAGE info:*****************************************");
+            ESP_LOGE(DATA_TAG, "****************************MESSAGE info:*****************************************");
             ESP_LOGI(DATA_TAG, "the type of the packet:MESSAGE");
             ESP_LOGI(DATA_TAG, "ID of the source node:");
             esp_log_buffer_hex(DATA_TAG, temp_info->source_id, ID_LEN);
@@ -1143,7 +1144,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
             ESP_LOGI(DATA_TAG, "Infrared:%d", temp_info->infrared[0]);
             ESP_LOGI(DATA_TAG, "Illumination:%d", temp_info->illumination[0]);
             ESP_LOGI(DATA_TAG, "Smoke:%d", temp_info->smoke[0]);
-            ESP_LOGI(DATA_TAG, "*********************************************************************************");
+            ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
             memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_transfer_message(temp_info, info), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
             queue_push(&send_queue, adv_data_final_for_message, 0);
