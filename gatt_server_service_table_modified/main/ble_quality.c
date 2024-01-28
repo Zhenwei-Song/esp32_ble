@@ -7,7 +7,7 @@ double Q = 1; // 系统过程
 double R = 1; // 测量
 // double SNR = 0;
 // double P = 1;
-double percentage = 0.5;
+double percentage = 0.1;
 // double base = 78.0L / 79.0L;
 
 // 卡尔曼滤波器 对snr进行滤波   一维 初始化p=1 SNRhat初始化为0 P初始化为1
@@ -25,8 +25,8 @@ void Kalman(double *SNRhat, double SNR_Z, double *P, double Q, double R)
     *SNRhat = SNR_hat + K * (SNR_Z - SNR_hat);
     // 更新估计误差协方差
     *P = (1 - K) * *P;
-    printf("SNRhat:%f\n", *SNRhat);
-    printf("P:%f\n", *P);
+    //printf("SNRhat:%f\n", *SNRhat);
+    //printf("P:%f\n", *P);
 }
 
 // 计算误码率
@@ -42,7 +42,7 @@ double calculate_ber(double SNR)
 double calculate_per(double SNR, double N)
 {
     double ber = calculate_ber(SNR);
-    printf("calculate_per ber: %f SNR: %f\n", ber, SNR);
+    //printf("calculate_per ber: %f SNR: %f\n", ber, SNR);
     double per = 1 - pow(((pow((1 - ber), 15)) + 15 * ber * pow((1 - ber), 14)), (double)(N) / 15.0);
     // printf("calculate_per per: %f\n", per);
     return per;

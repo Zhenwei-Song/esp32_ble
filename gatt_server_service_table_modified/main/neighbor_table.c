@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-12-05 17:18:06
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-25 16:55:18
+ * @LastEditTime: 2024-01-28 10:01:22
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\neighbor_table.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -103,7 +103,7 @@ int insert_neighbor_node(p_neighbor_table table, uint8_t *new_id, bool is_root, 
                 double RSSI = pow(10, 0.1 * (float)(rssi));
                 double back_noise = pow(10, 0.1 * (float)(BACKGROUND_NOISE));
                 double snr = RSSI / back_noise;
-                printf("rssi:%d, RSSI:%f, back_noise:%10f,BACKGROUND_NOISE: %f snr:%f\n", cur->rssi, RSSI, back_noise, (float)BACKGROUND_NOISE, snr);
+                // printf("rssi:%d, RSSI:%f, back_noise:%10f,BACKGROUND_NOISE: %f snr:%f\n", cur->rssi, RSSI, back_noise, (float)BACKGROUND_NOISE, snr);
                 Kalman((&cur->SNRhat), snr, (&cur->P), Q, R);
                 free(new_node);
                 return 0;
@@ -465,7 +465,7 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
 }
 #else
 /**
- * @description: 阈值上方时的入网行为
+ * @description: 阈值区域1时的入网行为
  * @param {p_neighbor_table} table
  * @param {p_my_info} info
  * @return {*}
@@ -499,7 +499,7 @@ void threshold_high_ops(p_neighbor_table table, p_my_info info)
 #endif
 
 /**
- * @description: 阈值中间时入网行为
+ * @description: 阈值区域2时入网行为
  * @param {p_neighbor_table} table
  * @param {p_my_info} info
  * @return {*}
@@ -545,7 +545,7 @@ void threshold_between_ops(p_neighbor_table table, p_my_info info)
 }
 
 /**
- * @description: 阈值下方时入网行为
+ * @description: 阈值区域3时入网行为
  * @param {p_neighbor_table} table
  * @param {p_my_info} info
  * @return {*}

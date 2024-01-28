@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-13 16:00:10
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-25 15:42:01
+ * @LastEditTime: 2024-01-28 15:52:27
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.c
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -11,6 +11,7 @@
 #include "ble_quality.h"
 #include "ble_queue.h"
 #include "ble_timer.h"
+#include "ble_uart.h"
 #include "down_routing_table.h"
 #include "esp_gap_ble_api.h"
 #include "macro_def.h"
@@ -24,6 +25,7 @@ uint8_t id_774a[ID_LEN] = {119, 74};
 uint8_t id_cae6[ID_LEN] = {202, 230};
 uint8_t id_eb36[ID_LEN] = {235, 54};
 uint8_t id_b50a[ID_LEN] = {181, 10};
+uint8_t id_0936[ID_LEN] = {9, 54};
 
 my_info my_information;
 
@@ -925,16 +927,16 @@ void resolve_rrer(uint8_t *rrer_data, p_my_info info)
     memcpy(temp, rrer_data, RRER_DATA_LEN);
     memcpy(temp_info->node_id, temp + 2, ID_LEN);
     memcpy(temp_info->destination_id, temp + 4, ID_LEN);
-    if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
 #ifdef PRINT_RRER_DETAIL
-        ESP_LOGE(DATA_TAG, "****************************RRER info:*****************************************");
-        ESP_LOGI(DATA_TAG, "the type of the packet:RRER");
-        ESP_LOGI(DATA_TAG, "ID of the source node:");
-        esp_log_buffer_hex(DATA_TAG, temp_info->node_id, ID_LEN);
-        ESP_LOGI(DATA_TAG, "ID of the Network Exchange Point:");
-        esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
-        ESP_LOGE(DATA_TAG, "*********************************************************************************");
+    ESP_LOGE(DATA_TAG, "****************************RRER info:*****************************************");
+    ESP_LOGI(DATA_TAG, "the type of the packet:RRER");
+    ESP_LOGI(DATA_TAG, "ID of the source node:");
+    esp_log_buffer_hex(DATA_TAG, temp_info->node_id, ID_LEN);
+    ESP_LOGI(DATA_TAG, "ID of the Network Exchange Point:");
+    esp_log_buffer_hex(DATA_TAG, info->root_id, ID_LEN);
+    ESP_LOGE(DATA_TAG, "*********************************************************************************");
 #endif
+    if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
 #ifdef PRINT_CONTROL_PACKAGES_STATES
         ESP_LOGE(DATA_TAG, "receive rrer");
 #endif // PRINT_CONTROL_PACKAGES_STATES
@@ -1052,6 +1054,8 @@ void resolve_message(uint8_t *message_data, p_my_info info)
 {
     p_message_info temp_info = (p_message_info)malloc(sizeof(message_info));
     uint8_t temp[MESSAGE_DATA_LEN];
+    uint8_t temp1[31] = {0Xfe, 0Xfc, 0Xf8, 0Xf0};
+    memset(temp1 + 31, 0, 1);
     memcpy(temp, message_data, MESSAGE_DATA_LEN);
     memcpy(temp_info->source_id, temp, ID_LEN);
     memcpy(temp_info->next_id, temp + 2, ID_LEN);
@@ -1061,7 +1065,10 @@ void resolve_message(uint8_t *message_data, p_my_info info)
     memcpy(temp_info->infrared, temp + 8, SENSOR_LEN);
     memcpy(temp_info->illumination, temp + 9, SENSOR_LEN);
     memcpy(temp_info->smoke, temp + 10, SENSOR_LEN);
-    memcpy(temp_info->useful_message, temp + 6, USEFUL_MESSAGE_LEN);
+    memcpy(temp1 + 4, temp, 6);
+    memset(temp1 + 10, 0xff, 16);
+    memcpy(temp1 + 26, temp + 6, 5);
+    // memset(temp_info->useful_message, 0xff, USEFUL_MESSAGE_LEN);
     if (memcmp(temp_info->next_id, info->my_id, ID_LEN) == 0) {            // message下一跳是我
         if (memcmp(temp_info->destination_id, info->my_id, ID_LEN) == 0) { // message目的地是我
             if (info->is_root == true) {                                   // 根节点接收message并回复
@@ -1084,6 +1091,9 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                     ESP_LOGI(DATA_TAG, "Illumination:%d", temp_info->illumination[0]);
                     ESP_LOGI(DATA_TAG, "Smoke:%d", temp_info->smoke[0]);
                     ESP_LOGE(DATA_TAG, "*********************************************************************************");
+                    if (info->is_root == true) {
+                        ESP_LOGE(DATA_TAG, "sending message to openwrt!!");
+                    }
 #endif
 #if 0
         memcpy(adv_data_final_for_message, data_match(adv_data_name_7, generate_message(adv_data_response_16, info, temp_info->source_id), HEAD_DATA_LEN, MESSAGE_FINAL_DATA_LEN), FINAL_DATA_LEN);
@@ -1091,11 +1101,16 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                     xSemaphoreGive(xCountingSemaphore_send);
 #endif
 #ifdef PRINT_MESSAGE_FOR_OPENWRT
+#if 0
                     printf("fe fc f8 f0 ");
                     for (int i = 0; i < MESSAGE_DATA_LEN; i++) {
                         printf("%02x ", temp[i]);
                     }
                     printf("\n");
+#else
+
+                    sendData_tx(TX_TAG, (const char *)temp1);
+#endif
 #endif
                 }
                 else {
@@ -1123,6 +1138,7 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                 ESP_LOGI(DATA_TAG, "Illumination:%d", temp_info->illumination[0]);
                 ESP_LOGI(DATA_TAG, "Smoke:%d", temp_info->smoke[0]);
                 ESP_LOGE(DATA_TAG, "*********************************************************************************");
+
 #endif
             }
         }
@@ -1194,24 +1210,35 @@ void resolve_block_message(uint8_t *block_message_data, p_my_info info)
     uint8_t temp_id[ID_LEN];
     memcpy(temp, block_message_data, BLOCK_MESSAGE_DATA_LEN);
     memcpy(temp_info->node_id, temp + 2, ID_LEN);
-    memcpy(temp_info->destination_id, temp + 4, ID_LEN);
-    if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
+    // memcpy(temp_info->destination_id, temp + 4, ID_LEN);
 #ifdef PRINT_CONTROL_PACKAGES_STATES
-        ESP_LOGE(DATA_TAG, "receive block_message");
-#endif                                             // PRINT_CONTROL_PACKAGES_STATES
-        if (temp_info->node_id == info->next_id) { // 我的父节点发来的阻塞消息
-            remove_up_routing_node(&my_up_routing_table, temp_info->node_id);
-            if (is_up_routing_table_empty(&my_up_routing_table) == true) { // 我的上传路由表中除了父节点就没别的路由了（仅有这一条路径）
-            }
-            else { // 切换上传的路径
-#ifdef PRINT_CONTROL_PACKAGES_STATES
-                ESP_LOGE(DATA_TAG, "choose another way");
+    ESP_LOGE(DATA_TAG, "receive block_message");
 #endif // PRINT_CONTROL_PACKAGES_STATES
-                memcpy(temp_id, get_up_routing_head_id(&my_up_routing_table), ID_LEN);
-                info->distance = get_neighbor_node_distance(&my_neighbor_table, temp_id);
-                memcpy(info->quality_from_me, get_neighbor_node_quality_from_me(&my_neighbor_table, temp_id), QUALITY_LEN);
-                memcpy(info->next_id, temp_id, ID_LEN);
-            }
-        }
+#ifdef PRINT_BLOCK_MESSAGE_DETAIL
+    ESP_LOGE(DATA_TAG, "****************************BLOCK MESSAGE info:***********************************");
+    ESP_LOGI(DATA_TAG, "the type of the packet:BLOCK MESSAGE");
+    ESP_LOGI(DATA_TAG, "ID of the source node:");
+    esp_log_buffer_hex(DATA_TAG, temp_info->node_id, ID_LEN);
+    // ESP_LOGI(DATA_TAG, "ID of the destination node:");
+    // esp_log_buffer_hex(DATA_TAG, temp_info->destination_id, ID_LEN);
+    ESP_LOGE(DATA_TAG, "*********************************************************************************");
+#endif
+    if (memcmp(info->next_id, temp_info->node_id, ID_LEN) == 0) { // 是我的父节点,我也入网失效
+
+        //         if (temp_info->node_id == info->next_id) { // 我的父节点发来的阻塞消息
+        //             remove_up_routing_node(&my_up_routing_table, temp_info->node_id);
+        //             if (is_up_routing_table_empty(&my_up_routing_table) == true) { // 我的上传路由表中除了父节点就没别的路由了（仅有这一条路径）
+        //             }
+        //             else { // 切换上传的路径
+        // #ifdef PRINT_CONTROL_PACKAGES_STATES
+        //                 ESP_LOGE(DATA_TAG, "choose another way");
+        // #endif // PRINT_CONTROL_PACKAGES_STATES
+
+        //                 memcpy(temp_id, get_up_routing_head_id(&my_up_routing_table), ID_LEN);
+        //                 info->distance = get_neighbor_node_distance(&my_neighbor_table, temp_id);
+        //                 memcpy(info->quality_from_me, get_neighbor_node_quality_from_me(&my_neighbor_table, temp_id), QUALITY_LEN);
+        //                 memcpy(info->next_id, temp_id, ID_LEN);
+        //             }
+        //         }
     }
 }

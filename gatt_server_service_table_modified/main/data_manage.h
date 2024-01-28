@@ -2,7 +2,7 @@
  * @Author: Zhenwei-Song zhenwei.song@qq.com
  * @Date: 2023-11-11 11:06:54
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-25 16:15:33
+ * @LastEditTime: 2024-01-26 16:16:41
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\data_manage.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2023 by Zhenwei-Song, All Rights Reserved.
@@ -54,9 +54,10 @@
 #define HEAD_DATA_LEN 7
 #define FINAL_DATA_LEN 31
 
-#define THRESHOLD_HIGH_1 0xff
+#define THRESHOLD_HIGH_1 0x7f
 #define THRESHOLD_HIGH_2 0xff
-#define THRESHOLD_LOW_1 0x01
+
+#define THRESHOLD_LOW_1 0x04
 #define THRESHOLD_LOW_2 0xff
 
 #define PHELLO_FINAL_DATA_LEN 18
@@ -91,6 +92,7 @@ extern uint8_t id_774a[ID_LEN];
 extern uint8_t id_cae6[ID_LEN];
 extern uint8_t id_eb36[ID_LEN];
 extern uint8_t id_b50a[ID_LEN];
+extern uint8_t id_0936[ID_LEN];
 
 typedef struct my_info {
     bool moveable;
@@ -166,7 +168,7 @@ typedef struct message_info {
     uint8_t source_id[ID_LEN];
     uint8_t next_id[ID_LEN];
     uint8_t destination_id[ID_LEN];
-    uint8_t useful_message[USEFUL_MESSAGE_LEN];
+    uint8_t useful_message[USEFUL_MESSAGE_LEN];//保留数据
     uint8_t temperature[SENSOR_LEN];
     uint8_t humidity[SENSOR_LEN];
     uint8_t infrared[SENSOR_LEN];

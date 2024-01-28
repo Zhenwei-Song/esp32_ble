@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-20 09:17:38
+ * @LastEditTime: 2024-01-28 10:38:51
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）
@@ -26,6 +26,7 @@
  */
 
 #include "ble.h"
+#include "ble_uart.h"
 #include "macro_def.h"
 
 #ifdef GPIO
@@ -136,34 +137,43 @@ static void ble_down_routing_table_task(void *pvParameters)
         refresh_cnt_neighbor_table(&my_neighbor_table, &my_information);
 #ifndef SELF_ROOT
         // update_quality_of_neighbor_table(&my_neighbor_table, &my_information);
-        if ((timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false && my_information.is_connected == false) || (timer3_running == false && entry_network_flag == true && my_information.is_connected == true)) { // 路由错误后等待一段时间后才进行路由发现
-            entry_network_flag = false;
-            if (threshold_high_flag == true) {
+        uint8_t neighbor_number = get_neighbor_node_number(&my_neighbor_table);
+        if (neighbor_number != 0) {
+            if ((timer3_running == false && timer2_running == false && timer1_running == false && timer1_timeout == false && timer2_timeout == false && my_information.is_connected == false) || (timer3_running == false && entry_network_flag == true && my_information.is_connected == true)) { // 路由错误后等待一段时间后才进行路由发现
+                entry_network_flag = false;
+                if (threshold_high_flag == true) {
 #ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
-                ESP_LOGE(DATA_TAG, "threshold_high_flag");
+                    ESP_LOGE(DATA_TAG, "threshold_high_flag");
 #endif
-                threshold_high_ops(&my_neighbor_table, &my_information);
-            }
-            else if (threshold_low_flag == true) {
-#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
-                ESP_LOGE(DATA_TAG, "threshold_between_flag");
-#endif
-                if (timer1_running == false) {
-                    // ESP_LOGE(DATA_TAG, "threshold_between_ops");
+#ifndef ONLY_SEND_HELLO
+                    // threshold_high_ops(&my_neighbor_table, &my_information);
                     threshold_between_ops(&my_neighbor_table, &my_information);
-                }
-            }
-            else {
-#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
-                ESP_LOGE(DATA_TAG, "threshold_low_flag");
 #endif
-                if (timer2_running == false) {
-                    // ESP_LOGE(DATA_TAG, "threshold_low_ops");
-                    threshold_low_ops(&my_neighbor_table, &my_information);
+                }
+                else if (threshold_low_flag == true) {
+#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
+                    ESP_LOGE(DATA_TAG, "threshold_between_flag");
+#endif
+                    if (timer1_running == false) {
+                        // ESP_LOGE(DATA_TAG, "threshold_between_ops");
+#ifndef ONLY_SEND_HELLO
+                        threshold_between_ops(&my_neighbor_table, &my_information);
+#endif
+                    }
+                }
+                else {
+#ifdef PRINT_ENTRY_NETWORK_FLAG_STATES
+                    ESP_LOGE(DATA_TAG, "threshold_low_flag");
+#endif
+                    if (timer2_running == false && timer1_running == false) {
+                        // ESP_LOGE(DATA_TAG, "threshold_low_ops");
+#ifndef ONLY_SEND_HELLO
+                        threshold_low_ops(&my_neighbor_table, &my_information);
+#endif
+                    }
                 }
             }
         }
-
         // set_my_next_id_quality_and_distance(&my_neighbor_table, &my_information);
 #endif
 #ifdef PRINT_NEIGHBOR_TABLE
@@ -541,12 +551,18 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                         }
                     }
                     else if (memcmp(my_information.my_id, id_cae6, 2) == 0) {
-                        if (memcmp(id_774a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                        if (memcmp(id_774a, scan_result->scan_rst.bda + 4, 2) == 0 ||
+                            memcmp(id_0936, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }
                     else if (memcmp(my_information.my_id, id_eb36, 2) == 0) {
                         if (memcmp(id_b50a, scan_result->scan_rst.bda + 4, 2) == 0) {
+                            is_filtered = true;
+                        }
+                    }
+                    else if (memcmp(my_information.my_id, id_0936, 2) == 0) {
+                        if (memcmp(id_cae6, scan_result->scan_rst.bda + 4, 2) == 0) {
                             is_filtered = true;
                         }
                     }
@@ -747,7 +763,9 @@ void app_main(void)
     // esp_timer_start_periodic(ble_time4_timer, TIME3_TIMER_PERIOD);
 #endif
 #endif
-
+#ifdef PRINT_MESSAGE_FOR_OPENWRT
+    ble_uart_init();
+#endif
 #ifdef BUTTON
     board_init();
 #endif // BUTTION
