@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2023-09-22 17:13:32
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-28 10:38:51
+ * @LastEditTime: 2024-02-29 10:05:51
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\ble.c
  * @Description:
  * 实现了广播与扫描同时进行（基于gap层）

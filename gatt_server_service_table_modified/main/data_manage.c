@@ -987,17 +987,17 @@ uint8_t *generate_message(uint8_t *message_data, p_my_info info, uint8_t *des_id
     temp_infrared[0] = 0;
     temp_illumination[0] = 5;
     temp_smoke[0] = 0;
-    message[0] |= temp_source_id[0]; // my ID
-    message[1] |= temp_source_id[1];
-    message[2] |= temp_next_id[0];
-    message[3] |= temp_next_id[1];
-    message[4] |= temp_des_id[0];
-    message[5] |= temp_des_id[1];
-    message[6] |= temp_temperature[0];
-    message[7] |= temp_humidity[0];
-    message[8] |= temp_infrared[0];
-    message[9] |= temp_illumination[0];
-    message[10] |= temp_smoke[0];
+    message[0] = temp_source_id[0]; // my ID
+    message[1] = temp_source_id[1];
+    message[2] = temp_next_id[0];
+    message[3] = temp_next_id[1];
+    message[4] = temp_des_id[0];
+    message[5] = temp_des_id[1];
+    message[6] = temp_temperature[0];
+    message[7] = temp_humidity[0];
+    message[8] = temp_infrared[0];
+    message[9] = temp_illumination[0];
+    message[10] = temp_smoke[0];
     memcpy(message_final + 2, message, 6);
     memcpy(message_final + 8, message_data, MESSAGE_DATA_LEN - 6);
     return message_final;
@@ -1033,12 +1033,12 @@ uint8_t *generate_transfer_message(p_message_info message_info, p_my_info info)
         memcpy(temp_next_id, info->next_id, ID_LEN);
     else // 向下转发
         memcpy(temp_next_id, get_down_routing_next_id(&my_down_routing_table, temp_des_id), ID_LEN);
-    message[0] |= temp_source_id[0];
-    message[1] |= temp_source_id[1];
-    message[2] |= temp_next_id[0];
-    message[3] |= temp_next_id[1];
-    message[4] |= temp_des_id[0];
-    message[5] |= temp_des_id[1];
+    message[0] = temp_source_id[0];
+    message[1] = temp_source_id[1];
+    message[2] = temp_next_id[0];
+    message[3] = temp_next_id[1];
+    message[4] = temp_des_id[0];
+    message[5] = temp_des_id[1];
     memcpy(message_final + 2, message, 6);
     memcpy(message_final + 8, temp_useful_message, MESSAGE_DATA_LEN - 6);
     return message_final;
@@ -1077,6 +1077,11 @@ void resolve_message(uint8_t *message_data, p_my_info info)
                     ESP_LOGE(DATA_TAG, "receive message from node,responding");
 #endif // PRINT_MASSAGE_PACKAGES_STATES
 #ifdef PRINT_MESSAGE_DETAIL
+                    temp_info->temperature[0] = 1;
+                    temp_info->humidity[0] = 2;
+                    temp_info->infrared[0] = 3;
+                    temp_info->illumination[0] = 4;
+                    temp_info->smoke[0] = 5;
                     ESP_LOGE(DATA_TAG, "****************************MESSAGE info:*****************************************");
                     ESP_LOGI(DATA_TAG, "the type of the packet:MESSAGE");
                     ESP_LOGI(DATA_TAG, "ID of the source node:");

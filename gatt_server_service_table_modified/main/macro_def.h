@@ -2,7 +2,7 @@
  * @Author: Zhenwei Song zhenwei.song@qq.com
  * @Date: 2024-01-20 09:47:36
  * @LastEditors: Zhenwei Song zhenwei.song@qq.com
- * @LastEditTime: 2024-01-28 13:52:33
+ * @LastEditTime: 2024-01-29 16:01:19
  * @FilePath: \esp32\esp32_ble\gatt_server_service_table_modified\main\macro_def.h
  * @Description: 仅供学习交流使用
  * Copyright (c) 2024 by Zhenwei Song, All Rights Reserved.
@@ -49,7 +49,7 @@
 
 // #define ONLY_SEND_HELLO
 
-#define PRINT_MESSAGE_FOR_OPENWRT
-#define SENGDING_MESSAGE_PERIODIC
+ #define PRINT_MESSAGE_FOR_OPENWRT
+// #define SENGDING_MESSAGE_PERIODIC
 
 #endif
